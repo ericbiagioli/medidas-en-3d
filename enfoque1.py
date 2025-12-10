@@ -10,6 +10,13 @@ from datetime import datetime
 import time
 
 
+#status = {
+#  capturing_m : False,
+#
+#}
+
+
+
 """
 Ajusta el tamaño de la imagen `img` para que entre en la ventana `win` y
 la muestra.
@@ -54,8 +61,10 @@ def default_camera_matrix(w: int, h: int):
 
     return K, distorsion
 
+
 """
-Detecta marcadores ArUco y estima la pose para cada marcador detectado.
+Detecta marcadores ArUco y estima los vectores de rotación y traslación de cada
+marcador detectado.
 
 ASUMO QUE LOS ARUCOS SIENDO USADOS SON DEL DICCIONARIO 5X5_1000
 
@@ -63,78 +72,66 @@ Parámetros:
 
 - img: imágen BGR (array numpy).
 - marker_side_m: tamaño del lado del marcador, en metros.
-- camera_matrix: matriz de cámara. Es una matriz numpy de 3x3, calculado o bien
-                 con default_camera_matrix o bien con algun proceso de
-                 calibración de cámara que permita mejores coeficientes.
-- dist_coeffs: Coeficientes de distorsión. Es un array de 5x1, calculado o bien
-                 con default_camera_matrix o bien con algun proceso de
-                 calibración de cámara que permita mejores coeficientes.
-
-
-
+- K: matriz de cámara. Es una matriz numpy de 3x3, calculada con
+     default_camera_matrix o bien con algun proceso de calibración de cámara
+     que permita mejores coeficientes.
+- D: Coeficientes de distorsión. Es un array de 5x1, calculado con
+     default_camera_matrix o con algun proceso de calibración de cámara que
+     permita mejores coeficientes.
 
 Valor de retorno:
 
-Lista de diccionarios de la forma: [{
-                                      'id': int,
-                                      'corners': [...],
-                                      'rvec': ,
-                                      `tvec`:
-                                    }, ...]
+Lista de objetos de la forma:
+[{
+    'id': int,
+    'corners': [...],
+    'rvec': <rvec>,
+    `tvec`: <tvec>
+ }, ...]
 
 Donde
-  'id' es el valor numérico del ArUco,
-  Cada tvec es la posición del centro del marcador en coordenadas de cámara.
-  Cada rvec es la orientación del marcador como un vector de rotación (Rodrigues).
+  id: es el valor numérico del ArUco,
+  tvec: vector de translación (es la posición del centro del marcador en coordenadas de cámara).
+  rvec: vector de rotación.
 
   Las coordenadas de cámara son así:
     Eje X de la cámara: hacia la derecha en la imagen.
     Eje Y de la cámara: hacia abajo en la imagen.
     Eje Z de la cámara: hacia adelante desde el foco (positivo hacia la escena).
-
 """
-def estimate_poses_and_corners( img,
-                                marker_side_m: float,
-                                camera_matrix,
-                                dist_coeffs):
+def estimate_poses_and_corners(img, marker_side_m: float, K, D):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
+    ret = []
 
-    params = cv2.aruco.DetectorParameters()
+    ar_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
+    ar_pars = cv2.aruco.DetectorParameters()
 
-    corners_list, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=params)
+    corners_list, ids, _ = cv2.aruco.detectMarkers(gray, ar_dict, parameters=ar_pars)
 
-    results = []
-    if ids is None or len(ids) == 0:
-        return results
+    if ids is None or corners_list is None or len(ids) == 0:
+      return ret
 
-    ### Stability
+    # Puntos del marcador, en coordenadas del marcador
     half = marker_side_m / 2.0
-
-    # Orden: igual al de detectMarkers (TL, TR, BR, BL)
     object_points = np.array([
-      [-half,  half, 0],   # top-left
-      [ half,  half, 0],   # top-right
-      [ half, -half, 0],   # bottom-right
-      [-half, -half, 0]    # bottom-left
+      [-half,  half, 0],
+      [ half,  half, 0],
+      [ half, -half, 0],
+      [-half, -half, 0]
     ], dtype=np.float32)
 
+    for i, marker_id in enumerate(ids.flatten()):
+      image_points = (corners_list[i])[0].astype(np.float32)
 
+      ok, rvec, tvec = cv2.solvePnP(object_points, image_points, K, D, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+      ret.append({'id': int(marker_id),
+                  'corners': corners_list[i].reshape(-1, 2).tolist(),
+                  'rvec':rvec,
+                  'tvec':tvec})
 
-    for i, marker_id_found in enumerate(ids.flatten()):
-      c = corners_list[i]
-      img_pts = c[0].astype(np.float32)  # (4,2)
-      ok, rvec, tvec = cv2.solvePnP(object_points, img_pts, camera_matrix, dist_coeffs, flags=cv2.SOLVEPNP_IPPE_SQUARE)
-      corners = corners_list[i].reshape(-1, 2).tolist()
-      results.append({'id': int(marker_id_found),
-                       'corners': corners,
-                       'rvec':rvec,
-                       'tvec':tvec})
-
-
-    return results
+    return ret
 
 
 def draw_results(image, results, K, D, marker_length_m):
@@ -156,19 +153,6 @@ def draw_results(image, results, K, D, marker_length_m):
                                       MAIN
 
 """
-
-def process_photo(params):
-  filename = "photos/9-49.9.jpg"
-  frame = cv2.imread(filename)
-  h, w = frame.shape[:2]
-  K, D = default_camera_matrix(w, h)
-  poses_and_corners = estimate_poses_and_corners(frame, params.marker_side_m, K, D)
-  out = draw_results(frame, poses_and_corners, K, D, params.marker_side_m)
-  while True:
-    show_fitted(params.winname, out)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-      break
-
 
 def process_video(params):
   device = 1
@@ -297,7 +281,7 @@ def process_video(params):
   cap.release()
 
 
-def main(mode):
+def main():
   root = tk.Tk()
   params = SimpleNamespace(winname = "Webcam",
                 marker_side_m = 0.045,
@@ -308,14 +292,10 @@ def main(mode):
   cv2.namedWindow(params.winname, cv2.WINDOW_NORMAL)
   cv2.setWindowProperty(params.winname, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-  if mode=="photo":
-    process_photo(params)
-  elif mode=="video":
-    process_video(params)
+  process_video(params)
 
   cv2.destroyAllWindows()
 
 
-main("video")
-#main("photo")
+main()
 
