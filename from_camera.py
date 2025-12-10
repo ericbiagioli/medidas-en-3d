@@ -6,7 +6,8 @@ import tkinter as tk
 import cv2
 import numpy as np
 from types import SimpleNamespace
-
+from datetime import datetime
+import time
 
 
 """
@@ -185,9 +186,18 @@ def process_video(params):
   h, w = frame.shape[:2]
   K, D = default_camera_matrix(w, h)
 
-  point1 = None
-  point2 = None
+  point_m = None
+  point_n = None
   distance = None
+
+  capturing_m = False
+  captured_m = []
+  capture_m_start_time = None
+  point_m = None
+  capturing_n = False
+  captured_n = []
+  capture_n_start_time = None
+  point_n = None
 
   while True:
     ret, frame = cap.read()
@@ -197,6 +207,7 @@ def process_video(params):
         exit(0)
 
     positions_and_corners = estimate_poses_and_corners(frame, params.marker_side_m, K, D)
+    punta_del_palito_en_coordenadas_de_camara = None
 
     if len(positions_and_corners) > 0:
       ## Sistema de coordenadas del marcador: El marcador tiene origen en su centro.
@@ -210,10 +221,9 @@ def process_video(params):
       R, _ = cv2.Rodrigues(rvec)
       tvec = positions_and_corners[0]['tvec'].reshape(3, 1)
       ## El palito tiene 0.5 cm en x y 32.6 cm en y
-      punta_de_palito_en_coordenadas_aruco = np.array([0.01, -0.24, 0.0])
+      punta_de_palito_en_coordenadas_aruco = np.array([0.0, -0.27, 0.0])
       punta_del_palito_en_coordenadas_de_camara = R @ punta_de_palito_en_coordenadas_aruco.reshape(3,1) + tvec
       centro_del_aruco = tvec
-
 
     out = draw_results(frame, positions_and_corners, K, D, params.marker_side_m)
 
@@ -236,18 +246,51 @@ def process_video(params):
         py = int(palito_2d[0,0,1])
         cv2.circle(out, (px, py), 5, (0,0,255), -1)
 
-    cv2.putText(out, f"point1: {point1}", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-    cv2.putText(out, f"point2: {point2}", (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+    if point_m is not None and point_n is not None:
+      distance = np.linalg.norm(point_m - point_n)
+
+    cv2.putText(out, f"point m: {point_m}", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+    cv2.putText(out, f"point n: {point_n}", (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
     cv2.putText(out, f"distance: {distance}", (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
     show_fitted(params.winname, out)
 
-    k = cv2.waitKey(1) & 0xFF
+    if capturing_m == True:
+      if (datetime.now() - capture_m_start_time).total_seconds() > 3.0:
+        capturing_m = False;
+      else:
+        if punta_del_palito_en_coordenadas_de_camara is not None:
+          captured_m.append(punta_del_palito_en_coordenadas_de_camara)
 
-    if k == ord('t'):
-      point1 = point2
-      point2 = punta_del_palito_en_coordenadas_de_camara
-      distance = dist = np.linalg.norm(point1 - point2)
+    if capturing_n == True:
+      if (datetime.now() - capture_n_start_time).total_seconds() > 3.0:
+        capturing_n = False;
+      else:
+        if punta_del_palito_en_coordenadas_de_camara is not None:
+          captured_n.append(punta_del_palito_en_coordenadas_de_camara)
+
+    if capturing_m == False and point_m is None:
+      arr = np.array(captured_m).reshape(len(captured_m), 3)
+      point_m = np.mean(arr, axis=0).reshape(3,1)
+      captured_m = []
+
+    if capturing_n == False and point_n is None:
+      arr = np.array(captured_n).reshape(len(captured_n), 3)
+      point_n = np.mean(arr, axis=0).reshape(3,1)
+      captured_n = []
+
+
+    k = cv2.waitKey(1) & 0xFF
+    if k == ord('m'):
+      capturing_m = True
+      captured_m = []
+      capture_m_start_time = datetime.now()
+      point_m = None
+    elif k == ord('n'):
+      capturing_n = True
+      captured_n = []
+      capture_n_start_time = datetime.now()
+      point_n = None
     elif k == ord('q'):
         break
 
