@@ -99,7 +99,7 @@ Donde
     Eje Y de la cámara: hacia abajo en la imagen.
     Eje Z de la cámara: hacia adelante desde el foco (positivo hacia la escena).
 """
-def estimate_poses_and_corners(img, marker_side_m: float, K, D):
+def detect_markers(img, marker_side_m: float, K, D):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -149,10 +149,57 @@ def draw_results(image, results, K, D, marker_length_m):
 
 
 """
+Procesa frame por frame.
 
-                                      MAIN
+En cada frame, chequea ArUcos existentes y envía los arucos existentes para ser
+procesados en el objeto de estado. Esta lista de ArUcos detectados podría estar
+vacía.
 
+Una vez procesados los (potencialmente 0) arucos detectados, se procede a
+escribir los textos y demás cosas que corresponda escribir arriba del frame, y
+a dibujarlo.
+
+
+Posteriormente, se procede a leer el teclado y enviar la tecla leída al objeto
+de estado.
 """
+
+class PointCaptureControl:
+  def __init__(self, name):
+    self.name = name
+    self.point = None
+    self.capturing = False
+    self.captured = []
+    self.starttime = None
+
+  def start(self):
+    self.point = None
+    self.capturing = True
+    self.captured = []
+    self.starttime = datetime.now()
+
+  def process(self, p):
+    if self.capturing == True:
+      if(datetime.now() - self.starttime).total_seconds() < 3.0:
+        self.captured.append(p)
+      else:
+        self.capturing = False
+        if len(self.captured) == 0:
+          self.point = None
+        else:
+          arr = np.array(self.captured).reshape(len(self.captured), 3)
+          self.point = np.mean(arr, axis=0).reshape(3,1)
+          self.captured = []
+          self.starttime = None
+
+status = dict(m=PointCaptureControl('m'), n=PointCaptureControl('n'))
+
+
+def get_distance(p1, p2):
+  if p1 is None or p2 is None:
+    return None
+  return np.linalg.norm(p1- p2)
+
 
 def process_video(params):
   device = 1
@@ -170,18 +217,7 @@ def process_video(params):
   h, w = frame.shape[:2]
   K, D = default_camera_matrix(w, h)
 
-  point_m = None
-  point_n = None
   distance = None
-
-  capturing_m = False
-  captured_m = []
-  capture_m_start_time = None
-  point_m = None
-  capturing_n = False
-  captured_n = []
-  capture_n_start_time = None
-  point_n = None
 
   while True:
     ret, frame = cap.read()
@@ -190,33 +226,44 @@ def process_video(params):
         print("No se pudo leer el frame de la cámara")
         exit(0)
 
-    positions_and_corners = estimate_poses_and_corners(frame, params.marker_side_m, K, D)
-    punta_del_palito_en_coordenadas_de_camara = None
+    markers = detect_markers(frame, params.marker_side_m, K, D)
 
-    if len(positions_and_corners) > 0:
-      ## Sistema de coordenadas del marcador: El marcador tiene origen en su centro.
-      #+x: Apunta hacia la derecha en la imagen del marcador.
-      #+y: Apunta hacia abajo en la imagen del marcador.
-      #+z: Apunta perpendicular al plano del marcador, hacia la cámara cuando el marcador está frente a la cámara.
-      rvec = positions_and_corners[0]['rvec']
-      ## cv2.Rodrigues transforma una representacion vectorial de una rotacion en
-      ## la representación matricial, que llamaremos R. La necesitaremos para
-      ## calcular donde está la punta del palito.
+    for idx, marker in enumerate(markers):
+      punta_del_palito_en_coordenadas_de_camara = None
+
+      # Sistema de coordenadas del marcador: El marcador tiene origen en su centro.
+      # +x: Apunta hacia la derecha en la imagen del marcador.
+      # +y: Apunta hacia abajo en la imagen del marcador.
+      # +z: Apunta perpendicular al plano del marcador, hacia la cámara cuando el marcador está frente a la cámara.
+      rvec = marker['rvec']
+      tvec = marker['tvec'].reshape(3, 1)
+
+      # cv2.Rodrigues transforma una representacion vectorial de una rotacion en
+      # la representación matricial, que llamaremos R. La necesitaremos para
+      # calcular donde está la punta del palito.
       R, _ = cv2.Rodrigues(rvec)
-      tvec = positions_and_corners[0]['tvec'].reshape(3, 1)
-      ## El palito tiene 0.5 cm en x y 32.6 cm en y
-      punta_de_palito_en_coordenadas_aruco = np.array([0.0, -0.27, 0.0])
-      punta_del_palito_en_coordenadas_de_camara = R @ punta_de_palito_en_coordenadas_aruco.reshape(3,1) + tvec
+
+      # Definir las posición de la punta del palito en coordenadas del marcador.
+      punta_del_palito_en_coordenadas_aruco = np.array([0.0, -0.27, 0.0])
+      punta_del_palito_en_coordenadas_de_camara = R @ punta_del_palito_en_coordenadas_aruco.reshape(3,1) + tvec
       centro_del_aruco = tvec
 
-    out = draw_results(frame, positions_and_corners, K, D, params.marker_side_m)
+      status['m'].process(punta_del_palito_en_coordenadas_de_camara)
+      status['n'].process(punta_del_palito_en_coordenadas_de_camara)
 
-    if len(positions_and_corners) > 0:
+    distance=get_distance(status['m'].point, status['n'].point)
+
+    ############################################################################
+    # Dibujar los marcadores
+    out = draw_results(frame, markers, K, D, params.marker_side_m)
+
+    # Escribir textos que ayudan a debuguear
+    for idx, marker in enumerate(markers):
       cv2.putText(out, f"Aruco: {centro_del_aruco}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-      cv2.putText(out, f"Palito: {punta_del_palito_en_coordenadas_de_camara}",    (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+      cv2.putText(out, f"Palito: {punta_del_palito_en_coordenadas_de_camara}",   (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
       ## Dibujar la punta del palito
-      p_mark = punta_de_palito_en_coordenadas_aruco.astype(np.float32).reshape(1,1,3)
+      p_mark = punta_del_palito_en_coordenadas_aruco.astype(np.float32).reshape(1,1,3)
       palito_2d, _ = cv2.projectPoints(
         p_mark,
         rvec.astype(np.float32),
@@ -230,51 +277,18 @@ def process_video(params):
         py = int(palito_2d[0,0,1])
         cv2.circle(out, (px, py), 5, (0,0,255), -1)
 
-    if point_m is not None and point_n is not None:
-      distance = np.linalg.norm(point_m - point_n)
 
-    cv2.putText(out, f"point m: {point_m}", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
-    cv2.putText(out, f"point n: {point_n}", (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+    cv2.putText(out, f"point m: {status['m'].point}", (50, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+    cv2.putText(out, f"point n: {status['n'].point}", (50, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
     cv2.putText(out, f"distance: {distance}", (50, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
     show_fitted(params.winname, out)
 
-    if capturing_m == True:
-      if (datetime.now() - capture_m_start_time).total_seconds() > 3.0:
-        capturing_m = False;
-      else:
-        if punta_del_palito_en_coordenadas_de_camara is not None:
-          captured_m.append(punta_del_palito_en_coordenadas_de_camara)
-
-    if capturing_n == True:
-      if (datetime.now() - capture_n_start_time).total_seconds() > 3.0:
-        capturing_n = False;
-      else:
-        if punta_del_palito_en_coordenadas_de_camara is not None:
-          captured_n.append(punta_del_palito_en_coordenadas_de_camara)
-
-    if capturing_m == False and point_m is None:
-      arr = np.array(captured_m).reshape(len(captured_m), 3)
-      point_m = np.mean(arr, axis=0).reshape(3,1)
-      captured_m = []
-
-    if capturing_n == False and point_n is None:
-      arr = np.array(captured_n).reshape(len(captured_n), 3)
-      point_n = np.mean(arr, axis=0).reshape(3,1)
-      captured_n = []
-
-
     k = cv2.waitKey(1) & 0xFF
     if k == ord('m'):
-      capturing_m = True
-      captured_m = []
-      capture_m_start_time = datetime.now()
-      point_m = None
+      status['m'].start()
     elif k == ord('n'):
-      capturing_n = True
-      captured_n = []
-      capture_n_start_time = datetime.now()
-      point_n = None
+      status['n'].start()
     elif k == ord('q'):
         break
 
@@ -288,12 +302,9 @@ def main():
                 screen_w = root.winfo_screenwidth(),
                 screen_h = root.winfo_screenheight())
   root.destroy()
-
   cv2.namedWindow(params.winname, cv2.WINDOW_NORMAL)
   cv2.setWindowProperty(params.winname, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
   process_video(params)
-
   cv2.destroyAllWindows()
 
 
