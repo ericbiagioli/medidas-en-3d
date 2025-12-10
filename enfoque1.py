@@ -1,21 +1,9 @@
-import argparse
-import json
-import sys
-from pathlib import Path
-import tkinter as tk
-import cv2
-import numpy as np
-from types import SimpleNamespace
 from datetime import datetime
 import time
-
-
-#status = {
-#  capturing_m : False,
-#
-#}
-
-
+import cv2
+import numpy as np
+import tkinter as tk
+from types import SimpleNamespace
 
 """
 Ajusta el tamaño de la imagen `img` para que entre en la ventana `win` y
@@ -33,6 +21,7 @@ def show_fitted(win, img):
     resized = cv2.resize(img, (new_w, new_h))
     cv2.imshow(win, resized)
 
+
 """
 Calcula la matriz de cámara y las distorsiones radiales y tangenciales. De
 momento, propongo una aproximación bien simple.
@@ -47,7 +36,6 @@ consideramos.
 ASUMO QUE la distancia focal es 0.8 * max(w, h).
 
 ASUMO QUE no hay distorsión (ni radial ni tangencial).
-@TODO: mejorar esto.
 """
 def default_camera_matrix(w: int, h: int):
     focal_length_px = 0.8 * max(w, h)
@@ -194,7 +182,6 @@ class PointCaptureControl:
 
 status = dict(m=PointCaptureControl('m'), n=PointCaptureControl('n'))
 
-
 def get_distance(p1, p2):
   if p1 is None or p2 is None:
     return None
@@ -297,8 +284,7 @@ def process_video(params):
 
 def main():
   root = tk.Tk()
-  params = SimpleNamespace(winname = "Webcam",
-                marker_side_m = 0.045,
+  params = SimpleNamespace(winname = "Webcam", marker_side_m = 0.045,
                 screen_w = root.winfo_screenwidth(),
                 screen_h = root.winfo_screenheight())
   root.destroy()
