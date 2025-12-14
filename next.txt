@@ -1,0 +1,5 @@
+* Preprocesar la imágen
+* Calibrar la cámara
+* DeepAruco ++ (o otra cosa que no sean arucos)
+* Mejor cámara
+* Mejor construcción

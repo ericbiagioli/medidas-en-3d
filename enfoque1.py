@@ -87,19 +87,50 @@ Donde
     Eje Y de la cámara: hacia abajo en la imagen.
     Eje Z de la cámara: hacia adelante desde el foco (positivo hacia la escena).
 """
-def detect_markers(img, marker_side_m: float, K, D):
+def detect_markers(img, marker_side_m: float, K, D, frame_prev=None):
+
+    # ===== Detectar marcadores
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    ret = []
+    # ===== Reducir flickering
+    clahe = cv2.createCLAHE(
+      clipLimit=2.0,
+      tileGridSize=(8,8)
+    )
+    gray = clahe.apply(gray)
+    gray = cv2.GaussianBlur(gray, (3,3), 0)
+
 
     ar_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
     ar_pars = cv2.aruco.DetectorParameters()
 
-    corners_list, ids, _ = cv2.aruco.detectMarkers(gray, ar_dict, parameters=ar_pars)
+    ar_pars.adaptiveThreshWinSizeMin = 5
+    ar_pars.adaptiveThreshWinSizeMax = 23
+    ar_pars.adaptiveThreshWinSizeStep = 4
 
-    if ids is None or corners_list is None or len(ids) == 0:
-      return ret
+    ar_pars.adaptiveThreshConstant = 7
+
+    ar_pars.minCornerDistanceRate = 0.05
+    ar_pars.minMarkerPerimeterRate = 0.03
+    ar_pars.maxMarkerPerimeterRate = 4.0
+
+    ar_pars.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    ar_pars.cornerRefinementWinSize = 7
+    ar_pars.cornerRefinementMaxIterations = 100
+    ar_pars.cornerRefinementMinAccuracy = 1e-6
+
+    corners, ids, _ = cv2.aruco.detectMarkers(gray, ar_dict, parameters=ar_pars)
+
+    if ids is None or corners is None or len(ids) == 0:
+      return []
+
+    # Refine
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-6)
+    stacked = np.vstack(corners).astype(np.float32)
+    cv2.cornerSubPix(gray, stacked, winSize=(5,5), zeroZone=(-1,-1), criteria=criteria)
+
+    # ===== Calcular tvec y rvec para cada marcador detectado
 
     # Puntos del marcador, en coordenadas del marcador
     half = marker_side_m / 2.0
@@ -110,12 +141,20 @@ def detect_markers(img, marker_side_m: float, K, D):
       [-half, -half, 0]
     ], dtype=np.float32)
 
+    ret = []
     for i, marker_id in enumerate(ids.flatten()):
-      image_points = (corners_list[i])[0].astype(np.float32)
+      image_points = (corners[i])[0].astype(np.float32)
 
-      ok, rvec, tvec = cv2.solvePnP(object_points, image_points, K, D, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+      ok, rvec, tvec = cv2.solvePnP(object_points, image_points, K, D, flags=cv2.SOLVEPNP_ITERATIVE)
+      cv2.solvePnPRefineLM(object_points, image_points, K, D, rvec, tvec)
+
+      #alpha = 0.85
+      #tvec = alpha*tvec_prev + (1-alpha)*tvec
+
+
+
       ret.append({'id': int(marker_id),
-                  'corners': corners_list[i].reshape(-1, 2).tolist(),
+                  'corners': corners[i].reshape(-1, 2).tolist(),
                   'rvec':rvec,
                   'tvec':tvec})
 
@@ -152,7 +191,7 @@ Posteriormente, se procede a leer el teclado y enviar la tecla leída al objeto
 de estado.
 """
 
-class PointCaptureControl:
+class Control:
   def __init__(self, name):
     self.name = name
     self.point = None
@@ -180,7 +219,6 @@ class PointCaptureControl:
           self.captured = []
           self.starttime = None
 
-status = dict(m=PointCaptureControl('m'), n=PointCaptureControl('n'))
 
 def get_distance(p1, p2):
   if p1 is None or p2 is None:
@@ -191,6 +229,7 @@ def get_distance(p1, p2):
 def process_video(params):
   device = 1
   cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+  status = dict(m=Control('m'), n=Control('n'))
 
   if not cap.isOpened():
     print("No se pudo abrir la cámara")
@@ -206,14 +245,22 @@ def process_video(params):
 
   distance = None
 
+  markers = None
+
   while True:
     ret, frame = cap.read()
+
+    ## use a frame
+    #ret = True
+    #frame = cv2.imread("photo.jpg",  cv2.IMREAD_COLOR)
+    #print("reading")
 
     if not ret:
         print("No se pudo leer el frame de la cámara")
         exit(0)
 
-    markers = detect_markers(frame, params.marker_side_m, K, D)
+    markers_prev = markers
+    markers = detect_markers(frame, params.marker_side_m, K, D, markers_prev)
 
     for idx, marker in enumerate(markers):
       punta_del_palito_en_coordenadas_de_camara = None
