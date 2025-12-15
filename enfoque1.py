@@ -131,7 +131,7 @@ de estado.
 class LastNSeconds:
   def __init__(self):
     self.captured = []
-    self.TIME_INTERVAL = 20.0
+    self.TIME_INTERVAL = 3.0
 
   def add(self, p):
     t = datetime.now()
@@ -140,23 +140,6 @@ class LastNSeconds:
     while i < len(self.captured) and (t - self.captured[i][0]).total_seconds() > self.TIME_INTERVAL:
       i += 1
     self.captured = self.captured[i:]
-    #self.filter_outliers()
-
-
-  def filter_outliers(self):
-    points = np.array([p for (_, p) in self.captured])
-    centroid = points.mean(axis = 0)
-    std = points.std(axis = 0)
-    dists = np.linalg.norm(points - centroid, axis=1)
-    mu = dists.mean()
-    sigma = dists.std()
-
-    if sigma == 0:
-        mask = np.ones(len(points), dtype=bool)
-    else:
-        mask = (dists >= mu - 1.0 * sigma) & (dists <= mu + 1.0 * sigma)
-
-    self.captured = points[mask]
 
 
   def ncaptures(self):
