@@ -156,8 +156,8 @@ def process_video(params):
 
 
 
-  device = 1
-  cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+  cap = cv2.VideoCapture("/dev/video1", cv2.CAP_V4L2)
+
   # IP WebCam pro
   #cap = cv2.VideoCapture("http://127.0.0.1:8080/video")
   if not cap.isOpened():
