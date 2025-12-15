@@ -100,7 +100,7 @@ def detect_markers(img, marker_side_m: float, K, D, frame_prev=None):
     for i, marker_id in enumerate(ids.flatten()):
       image_points = (corners[i])[0].astype(np.float32)
 
-      ok, rvec, tvec = cv2.solvePnP(object_points, image_points, K, D, flags=cv2.SOLVEPNP_ITERATIVE)
+      ok, rvec, tvec = cv2.solvePnP(object_points, image_points, K, D, cv2.SOLVEPNP_IPPE_SQUARE)
       cv2.solvePnPRefineLM(object_points, image_points, K, D, rvec, tvec)
 
       ret.append({'id': int(marker_id),
@@ -112,60 +112,14 @@ def detect_markers(img, marker_side_m: float, K, D, frame_prev=None):
 
 
 
-"""
-Procesa frame por frame.
 
-En cada frame, chequea ArUcos existentes y envía los arucos existentes para ser
-procesados en el objeto de estado. Esta lista de ArUcos detectados podría estar
-vacía.
-
-Una vez procesados los (potencialmente 0) arucos detectados, se procede a
-escribir los textos y demás cosas que corresponda escribir arriba del frame, y
-a dibujarlo.
-
-
-Posteriormente, se procede a leer el teclado y enviar la tecla leída al objeto
-de estado.
-"""
-
-class LastNSeconds:
-  def __init__(self):
-    self.captured = []
-    self.TIME_INTERVAL = 3.0
-
-  def add(self, p):
-    t = datetime.now()
-    self.captured.append( (t, p))
-    i = 0
-    while i < len(self.captured) and (t - self.captured[i][0]).total_seconds() > self.TIME_INTERVAL:
-      i += 1
-    self.captured = self.captured[i:]
-
-
-  def ncaptures(self):
-    return len(self.captured)
-
-  def stats(self):
-    points = np.array([p for (_, p) in self.captured])
-    mean = points.mean(axis = 0)
-    std = points.std(axis = 0)
-    return mean, std
-
-  def ok(self):
-    points = np.array([p for _, p in self.captured])
-    mean = points.mean(axis = 0)
-    std = points.std(axis = 0)
-    ok1 = (len(self.captured) > 9)
-    ok2 = (std < 0.001).all()
-    return (ok1 and ok2), mean, std
-
-
-
-def obj_to_cammera_coords(obj_coords, rvec, tvec):
+def to_cammera_coords(obj_coords, rvec, tvec):
   # cv2.Rodrigues transforma una representacion vectorial de una rotacion en
   # la representación matricial, que llamaremos R.
   R, _ = cv2.Rodrigues(rvec)
   return R @ obj_coords.reshape(3,1) + tvec
+
+
 
 
 class Writer:
@@ -175,128 +129,126 @@ class Writer:
     self.img = img
 
   def write(self, text):
-    cv2.putText(self.img, text, (self.cx, self.cy), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+    cv2.putText(self.img,
+      text, (self.cx, self.cy),
+      cv2.FONT_HERSHEY_SIMPLEX,
+      0.6,
+      (0,255,0),
+      2)
     self.cy = self.cy + 30
 
+
+
+
+
 def process_video(params):
+
+
+
+  palito_a = None
+  palito_b = None
+  distance = get_distance(palito_a, palito_b)
+  # palito_aruco es la punta del palito en coordenadas aruco
+  palito_aruco = {}
+  palito_aruco[63] = np.array([-0.041, -0.150, -0.0025])
+  palito_aruco[63] = palito_aruco[63].astype(np.float64)
+
+
+
+
   device = 1
   cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
-
-  stats : Dict[int, LastNSeconds] = {}
-
-  point_m = None
-  point_n = None
-  distance = get_distance(point_m, point_n)
-  capturing_m = False
-  capturing_n = False
-
-
+  # IP WebCam pro
+  #cap = cv2.VideoCapture("http://127.0.0.1:8080/video")
   if not cap.isOpened():
     print("No se pudo abrir la cámara")
     exit()
 
-  ret, frame = cap.read()
-  if not ret:
-    print("No se pudo leer un frame de la cámara")
-    exit()
+  cam_w = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+  cam_h = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+  print(cam_w, cam_h)
 
-  h, w = frame.shape[:2]
-  K, D = default_camera_matrix(w, h)
+
+
+
+  K, D = default_camera_matrix(cam_w, cam_h)
+
+
+
 
   while True:
     ret, frame = cap.read()
-
-    ## use a frame
-    #ret = True
-    #frame = cv2.imread("photo.jpg",  cv2.IMREAD_COLOR)
-    #print("reading")
-
     if not ret:
         print("No se pudo leer el frame de la cámara")
         exit(0)
 
+    ## use a fixed photo
+    #ret = True
+    #frame = cv2.imread("photo.jpg",  cv2.IMREAD_COLOR)
+
+
     markers = detect_markers(frame, params.marker_side_m, K, D)
 
 
+    # Calcular el puntito aruco como el promedio de todos los puntitos arucos
+    # correspondientes a cada uno de los markers detectados
+    # Sistema de coordenadas del marcador:
+    # El marcador tiene origen en su centro.
+    # +x: Apunta hacia la derecha en la imagen del marcador.
+    # +y: Apunta hacia abajo en la imagen del marcador.
+    # +z: Apunta perpendicular al plano del marcador, hacia la cámara cuando
+    #     el marcador está frente a la cámara.
+
+    ## USO SOLO EL MARKER 63
+
+    rvec = None
+    tvec = None
+    mark = None
+    palito_camara = None
+
     for marker in markers:
-      if marker['id'] not in stats:
-        stats[marker['id']] = LastNSeconds()
+      if marker['id'] != 63:
+        continue
+      mark = marker
+      break
 
-      # Sistema de coordenadas del marcador:
-      # El marcador tiene origen en su centro.
-      # +x: Apunta hacia la derecha en la imagen del marcador.
-      # +y: Apunta hacia abajo en la imagen del marcador.
-      # +z: Apunta perpendicular al plano del marcador, hacia la cámara cuando
-      #     el marcador está frente a la cámara.
-      rvec = marker['rvec']
-      tvec = marker['tvec'].reshape(3, 1)
+    if mark is not None:
+      rvec = mark['rvec'].astype(np.float64)
+      tvec = mark['tvec'].reshape(3, 1).astype(np.float64)
 
-      # palito_aruco es la punta del palito en coordenadas aruco
       # palito_camera es la punta del palito en coordenadas de camara
-      palito_aruco = np.array([0.0, -0.27, 0.0])
-      palito_camara = obj_to_cammera_coords(palito_aruco, rvec, tvec)
-      stats[marker['id']].add(palito_camara)
+      palito_camara = to_cammera_coords(palito_aruco[63], rvec, tvec)
+      palito_camara = palito_camara.astype(np.float64).reshape(3,1)
 
+    ## Dibujar contornos
     out = draw_results(frame, markers, K, D, params.marker_side_m)
-    distance = get_distance(point_m, point_n)
 
-    # Escribir textos
-    w = Writer(out)
-    for marker in markers:
-      m_id = marker['id']
-      rvec = marker['rvec']
-      tvec = marker['tvec'].reshape(3, 1)
-      palito_aruco = np.array([0.0, -0.27, 0.0])
-      palito_camara = obj_to_cammera_coords(palito_aruco, rvec, tvec)
+    ## Dibujar la punta del palito
+    if palito_camara is not None:
+      palito_2d, _ = cv2.projectPoints(palito_camara, rvec,
+        tvec.astype(np.float64), K.astype(np.float64), D.astype(np.float64))
 
-      ncaptures = stats[m_id].ncaptures()
-      avg,std = stats[m_id].stats()
-      w.write(f"Aruco instantaneo [{marker['id']}] = {tvec}")
-      w.write(f"Palito instantaneo [{marker['id']}] = {palito_camara}")
-      w.write(f"ncaptures[{marker['id']}] = {ncaptures}")
-      w.write(f"avg[{marker['id']}] = {avg}")
-      w.write(f"std[{marker['id']}] = {std}")
-
-      ## Dibujar la punta del palito
-      p_mark = palito_aruco.astype(np.float32).reshape(1,1,3)
-      palito_2d, _ = cv2.projectPoints( p_mark, rvec.astype(np.float32),
-        tvec.astype(np.float32), K.astype(np.float32), D.astype(np.float32))
       if not np.isnan(palito_2d[0,0]).any():
         px = int(palito_2d[0,0,0])
         py = int(palito_2d[0,0,1])
         cv2.circle(out, (px, py), 5, (0,0,255), -1)
 
-    ok = False
-    if 63 in stats.keys():
-      ok, centroid, deviation = stats[63].ok()
+    ## Escribir textos
+    distance = get_distance(palito_a, palito_b)
 
-    if capturing_m:
-      if ok:
-        capturing_m = False
-        point_m = centroid
-      else:
-        point_m = "capturing"
 
-    if capturing_n:
-      if ok:
-        capturing_n = False
-        point_n = centroid
-      else:
-        point_n = "capturing"
-
-    distance = get_distance(point_m, point_n)
-
-    w.write(f"m = {point_m}")
-    w.write(f"n = {point_n}")
+    w = Writer(out)
+    w.write(f"palito_a = {palito_a}")
+    w.write(f"palito_b = {palito_b}")
     w.write(f"dist: {distance}")
 
     show_fitted(params.winname, out)
 
     k = cv2.waitKey(1) & 0xFF
-    if k == ord('m'):
-      capturing_m = True
-    elif k == ord('n'):
-      capturing_n = True
+    if k == ord('a'):
+      palito_a = palito_camara
+    elif k == ord('b'):
+      palito_b = palito_camara
     elif k == ord('q'):
         break
 
@@ -305,7 +257,7 @@ def process_video(params):
 
 def main():
   root = tk.Tk()
-  params = SimpleNamespace(winname = "Webcam", marker_side_m = 0.045,
+  params = SimpleNamespace(winname = "Webcam", marker_side_m = 0.043,
                 screen_w = root.winfo_screenwidth(),
                 screen_h = root.winfo_screenheight())
   root.destroy()
