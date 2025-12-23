@@ -70,142 +70,6 @@ def detect_charuco(frame, debug=False):
 # CAPTURA DE FRAMES
 # ============================================================
 
-####def capture_frames():
-####    mkdir(SAVE_DIR)
-####    cap_l = cv2.VideoCapture(CAM_LEFT)
-####    cap_r = cv2.VideoCapture(CAM_RIGHT)
-####
-####    count = 0
-####    print("▶ Presioná SPACE para capturar | ESC para salir")
-####
-####    while count < NUM_FRAMES:
-####        ret_l, frame_l = cap_l.read()
-####        ret_r, frame_r = cap_r.read()
-####        if not ret_l or not ret_r:
-####            break
-####
-####        cv2.imshow("Left", frame_l)
-####        cv2.imshow("Right", frame_r)
-####
-####        key = cv2.waitKey(1)
-####        if key == 32:  # SPACE
-####            cv2.imwrite(f"{SAVE_DIR}/left_{count:02d}.png", frame_l)
-####            cv2.imwrite(f"{SAVE_DIR}/right_{count:02d}.png", frame_r)
-####            print(f"✔ Frame {count} capturado")
-####            count += 1
-####
-####        elif key == 27:
-####            break
-####
-####    cap_l.release()
-####    cap_r.release()
-####    cv2.destroyAllWindows()
-####
-####def capture_frames():
-####    mkdir(SAVE_DIR)
-####    cap_l = cv2.VideoCapture(CAM_LEFT)
-####    cap_r = cv2.VideoCapture(CAM_RIGHT)
-####
-####    valid_left   = 0
-####    valid_right  = 0
-####    valid_stereo = 0
-####    saved        = 0
-####
-####    print("▶ SPACE = capturar | ESC = salir\n")
-####
-####    while saved < NUM_FRAMES:
-####        ret_l, frame_l = cap_l.read()
-####        ret_r, frame_r = cap_r.read()
-####        if not ret_l or not ret_r:
-####            break
-####
-####        cl, il = detect_charuco(frame_l)
-####        cr, ir = detect_charuco(frame_r)
-####
-####        ok_l = cl is not None
-####        ok_r = cr is not None
-####
-####        ok_s = False
-####        n_common = 0
-####
-####        if ok_l and ok_r:
-####            common_ids = np.intersect1d(il.flatten(), ir.flatten())
-####            n_common = len(common_ids)
-####            ok_s = n_common >= 4
-####
-####        # Dibujos
-####        vis_l = frame_l.copy()
-####        vis_r = frame_r.copy()
-####
-####        if ok_l:
-####            cv2.aruco.drawDetectedCornersCharuco(vis_l, cl, il)
-####        if ok_r:
-####            cv2.aruco.drawDetectedCornersCharuco(vis_r, cr, ir)
-####
-####        # Texto overlay
-####        cv2.putText(
-####            vis_l,
-####            f"Left OK: {valid_left}",
-####            (10, 30),
-####            cv2.FONT_HERSHEY_SIMPLEX,
-####            0.8,
-####            (0,255,0) if ok_l else (0,0,255),
-####            2
-####        )
-####
-####        cv2.putText(
-####            vis_r,
-####            f"Right OK: {valid_right}",
-####            (10, 30),
-####            cv2.FONT_HERSHEY_SIMPLEX,
-####            0.8,
-####            (0,255,0) if ok_r else (0,0,255),
-####            2
-####        )
-####
-####        cv2.putText(
-####            vis_l,
-####            f"Stereo OK: {valid_stereo} (common: {n_common})",
-####            (10, 65),
-####            cv2.FONT_HERSHEY_SIMPLEX,
-####            0.8,
-####            (0,255,0) if ok_s else (0,0,255),
-####            2
-####        )
-####
-####        cv2.imshow("Left", vis_l)
-####        cv2.imshow("Right", vis_r)
-####
-####        key = cv2.waitKey(1)
-####
-####        if key == 32:  # SPACE
-####            if ok_l:
-####                valid_left += 1
-####            if ok_r:
-####                valid_right += 1
-####            if ok_s:
-####                valid_stereo += 1
-####
-####            # Guardamos SIEMPRE, pero sabemos qué sirve
-####            cv2.imwrite(f"{SAVE_DIR}/left_{saved:02d}.png", frame_l)
-####            cv2.imwrite(f"{SAVE_DIR}/right_{saved:02d}.png", frame_r)
-####
-####            print(
-####                f"✔ Guardado {saved:02d} | "
-####                f"L:{valid_left} R:{valid_right} S:{valid_stereo}"
-####            )
-####
-####            saved += 1
-####
-####        elif key == 27:
-####            break
-####
-####    cap_l.release()
-####    cap_r.release()
-####    cv2.destroyAllWindows()
-
-
-
 def capture_frames():
     mkdir(SAVE_DIR)
     cap_l = cv2.VideoCapture(CAM_LEFT)
@@ -220,8 +84,8 @@ def capture_frames():
     last_centroid = None
 
     MIN_COMMON_IDS = 12
-    MIN_MOVE_PX = 15        # evita capturas repetidas
-    COOLDOWN = 0.5          # segundos
+    MIN_MOVE_PX = 15
+    COOLDOWN = 0.5
 
     print("▶ Captura automática activada (ESC para salir)\n")
 
@@ -376,67 +240,6 @@ def calibrate_single(image_files):
         )
 
     return K, D, image_size
-
-# ============================================================
-# CALIBRACIÓN ESTÉREO
-# ============================================================
-
-####def stereo_calibrate(K1, D1, K2, D2, image_size):
-####
-####    objpoints = []
-####    imgpoints_l = []
-####    imgpoints_r = []
-####
-####    left_images  = sorted(glob.glob(f"{SAVE_DIR}/left_*.png"))
-####    right_images = sorted(glob.glob(f"{SAVE_DIR}/right_*.png"))
-####
-####    for lf, rf in zip(left_images, right_images):
-####        img_l = cv2.imread(lf)
-####        img_r = cv2.imread(rf)
-####
-####        cl, il = detect_charuco(img_l)
-####        cr, ir = detect_charuco(img_r)
-####
-####        if cl is None or cr is None:
-####            continue
-####
-####        # Usamos solo IDs comunes
-####        common_ids = np.intersect1d(il.flatten(), ir.flatten())
-####        if len(common_ids) < 3:
-####            continue
-####
-####        obj = []
-####        pts_l = []
-####        pts_r = []
-####
-####        for cid in common_ids:
-####            idx_l = np.where(il == cid)[0][0]
-####            idx_r = np.where(ir == cid)[0][0]
-####
-####            obj.append(board.chessboardCorners[cid])
-####            pts_l.append(cl[idx_l])
-####            pts_r.append(cr[idx_r])
-####
-####        objpoints.append(np.array(obj, dtype=np.float32))
-####        imgpoints_l.append(np.array(pts_l, dtype=np.float32))
-####        imgpoints_r.append(np.array(pts_r, dtype=np.float32))
-####
-####    flags = cv2.CALIB_FIX_INTRINSIC
-####
-####    ret, _, _, _, _, R, T, _, _ = cv2.stereoCalibrate(
-####        objpoints,
-####        imgpoints_l,
-####        imgpoints_r,
-####        K1, D1,
-####        K2, D2,
-####        image_size,
-####        flags=flags
-####    )
-####
-####    print("✔ Stereo RMS:", ret)
-####    return R, T
-####
-
 
 
 def stereo_calibrate(K1, D1, K2, D2, image_size):

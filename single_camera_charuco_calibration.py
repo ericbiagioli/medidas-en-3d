@@ -114,3 +114,11 @@ with open("calibration_charuco.pkl", "wb") as f:
 
 print("\n✔ Calibración guardada en calibration_charuco.pkl")
 
+
+def main():
+  capture_frames()
+  images  = sorted(glob.glob(f"{FRAMES_DIR}/*.png"))
+  K, D, image_size = calibrate_single(images)
+
+if __name__ == "__main__":
+    main()
