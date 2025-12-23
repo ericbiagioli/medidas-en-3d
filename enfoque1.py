@@ -4,11 +4,23 @@ import cv2
 import numpy as np
 import tkinter as tk
 from types import SimpleNamespace
+import pickle
+import os
 
 from helpers import show_fitted
 from helpers import default_camera_matrix
 from helpers import draw_results
 from helpers import get_distance
+
+
+def get_camera_camera_and_distortion_matrices(w, h):
+  #if os.path.exists("calib-results.pkl"):
+  #  with open("calib-results.pkl", "rb") as f:
+  #    K, D = pickle.load(f)
+  #  return K, D
+  #else:
+    return default_camera_matrix(w, h)
+
 
 
 """
@@ -150,7 +162,8 @@ def process_video(params):
   distance = get_distance(palito_a, palito_b)
   # palito_aruco es la punta del palito en coordenadas aruco
   palito_aruco = {}
-  palito_aruco[63] = np.array([-0.041, -0.150, -0.0025])
+  #palito_aruco[63] = np.array([-0.041, -0.150, -0.0025])
+  palito_aruco[63] = np.array([0.0, 0.0, 0.0])
   palito_aruco[63] = palito_aruco[63].astype(np.float64)
 
 
@@ -171,7 +184,7 @@ def process_video(params):
 
 
 
-  K, D = default_camera_matrix(cam_w, cam_h)
+  K, D = get_camera_camera_and_distortion_matrices(cam_w, cam_h)
 
 
 
@@ -228,10 +241,17 @@ def process_video(params):
       palito_2d, _ = cv2.projectPoints(palito_camara, rvec,
         tvec.astype(np.float64), K.astype(np.float64), D.astype(np.float64))
 
+      print(palito_2d)
+      ih, iw = out.shape[:2]
       if not np.isnan(palito_2d[0,0]).any():
         px = int(palito_2d[0,0,0])
         py = int(palito_2d[0,0,1])
-        cv2.circle(out, (px, py), 5, (0,0,255), -1)
+        if 0 <= px < iw and 0 <= py < ih:
+            cv2.circle(out, (px, py), 5, (0, 0, 255), -1)
+
+
+
+
 
     ## Escribir textos
     distance = get_distance(palito_a, palito_b)

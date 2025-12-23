@@ -1,6 +1,18 @@
 import cv2
 import numpy as np
 
+
+def list_cameras(max_devices=10):
+    available = []
+    for i in range(max_devices):
+        cap = cv2.VideoCapture(f"/dev/video{i}")
+        if cap.isOpened():
+            available.append(i)
+            cap.release()
+    return available
+
+
+
 """
 Ajusta el tamaño de la imagen `img` para que entre en la ventana `win` y
 la muestra.
