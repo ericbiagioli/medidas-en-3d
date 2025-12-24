@@ -33,22 +33,47 @@ P2 = data["P2"]
 
 MARKER_SIZE = 0.043
 
-def process_video(params):
-  capL = cv2.VideoCapture("/dev/video2", cv2.CAP_V4L2)
-  capR = cv2.VideoCapture("/dev/video4", cv2.CAP_V4L2)
+def process_video(params, debug=True):
 
-  L_w = capL.get(cv2.CAP_PROP_FRAME_WIDTH)
-  L_h = capL.get(cv2.CAP_PROP_FRAME_HEIGHT)
-  #print("L_w = ", L_w, "   L_h = ", L_h)
+  devL = "/dev/video0"
+  devR = "/dev/video2"
+
+  capL = cv2.VideoCapture(devL, cv2.CAP_V4L2)
+  capR = cv2.VideoCapture(devR, cv2.CAP_V4L2)
+  if not capL.isOpened() or not capR.isOpened():
+    print("Couldn't open some of the VideoCaptures.")
+    exit()
+
+  # Mitigate delay between captures.
+  # They won't be perfectly syncronized, but at least to the best try.
+  # Set the buffering to 1 (the minimum, and discard 1 frame when reading).
+  capL.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+  capR.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+  ## Show resolutions
+  if debug:
+    L_w = capL.get(cv2.CAP_PROP_FRAME_WIDTH)
+    L_h = capL.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    R_w = capR.get(cv2.CAP_PROP_FRAME_WIDTH)
+    R_h = capR.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    print(f"Resolution Left Camera = {L_w}x{L_h}")
+    print(f"Resolution Right Camera = {R_w}x{R_h}")
 
   while True:
+    # Discard one frame (buffered)
+    capL.grab()
+    capR.grab()
+    ret_L, f1 = capL.retrieve()
+    ret_R, f2 = capR.retrieve()
+    # Read the frame
     ret_L, frame_L = capL.read()
     ret_R, frame_R = capR.read()
-    if not ret_L:
-      print("No se pudo leer el frame de la cámara L")
-    if not ret_R:
-      print("No se pudo leer el frame de la cámara R")
+
     if not ret_L or not ret_R:
+      if not ret_L:
+        print("No se pudo leer el frame de la cámara L")
+      if not ret_R:
+        print("No se pudo leer el frame de la cámara R")
       continue
 
     show_fitted(params.winname_L, frame_L)
@@ -60,17 +85,6 @@ def process_video(params):
 
   cap.release()
 
-#def triangulate_points(pt_l, pt_r):
-#    """
-#    Triangula un punto 3D a partir de dos puntos 2D
-#    """
-#    pt_l = pt_l.reshape(2, 1)
-#    pt_r = pt_r.reshape(2, 1)
-#
-#    X = cv2.triangulatePoints(P1, P2, pt_l, pt_r)
-#    X = X[:3] / X[3]
-#
-#    return X.flatten()
 
 def triangulate_points(pts_l, pts_r):
     """
@@ -402,7 +416,8 @@ exit()
 """
 #resolution=(1280, 720)
 #resolution=(800, 600)
-resolution=(1280, 960)
+#resolution=(1280, 960)
+resolution=(640, 480)
 
 
 main2(resolution)

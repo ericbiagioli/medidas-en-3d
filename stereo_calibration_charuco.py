@@ -15,7 +15,7 @@ SQUARE_LENGTH = 0.030  # metros
 MARKER_LENGTH = 0.022  # metros
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 
-NUM_FRAMES = 150        # mínimo razonable: 20–30
+NUM_FRAMES = 50        # mínimo razonable: 20–30
 SAVE_DIR = "stereo_calibration_charuco_frames"
 
 # ============================================================
@@ -72,11 +72,22 @@ def capture_frames(SAVE_DIR="stereo_calibration_charuco_frames",
   CAM_RIGHT="/dev/video2",
   MIN_COMMON_IDS=12,
   MIN_MOVE_PX=15,
-  COOLDOWN=0.5):
+  COOLDOWN=0.5, resolution=(640, 480)):
 
     mkdir(SAVE_DIR)
     cap_l = cv2.VideoCapture(CAM_LEFT)
     cap_r = cv2.VideoCapture(CAM_RIGHT)
+    # Mitigar el delay que hay entre frames.
+    cap_l.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap_r.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_l.set(cv2.CAP_PROP_FPS, 30)
+    cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_r.set(cv2.CAP_PROP_FPS, 30)
+    cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
 
     valid_left   = 0
     valid_right  = 0
