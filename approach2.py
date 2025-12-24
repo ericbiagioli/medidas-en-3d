@@ -188,7 +188,41 @@ ar_pars.cornerRefinementMinAccuracy = 1e-6
 
 detector = cv2.aruco.ArucoDetector(ar_dict, ar_pars)
 
-def main2():
+
+
+def find_resolutions(device):
+  resols = [
+    (640,480),
+    (800,600),
+    (1280,720),
+    (1920,1080),
+    (2304,1536),
+  ]
+
+  retval = []
+  cap = cv2.VideoCapture(device)
+  if not cap.isOpened():
+      print(f"Cannot open {device}.")
+      return retval
+
+  cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+  cap.set(cv2.CAP_PROP_FPS, 30)
+  cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+  cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+  for w,h in resols:
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+    ret, frame = cap.read()
+    if ret:
+        retval.append( (frame.shape[1], frame.shape[0]) )
+
+  cap.release()
+  return retval
+
+
+
+def main2(resolution):
     root = tk.Tk()
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
@@ -198,34 +232,52 @@ def main2():
         winname_L="Webcam_L",
         winname_R="Webcam_R",
         screen_w=screen_w,
-        screen_h=screen_h
+        screen_h=screen_h,
+        cam_left="/dev/video2",
+        cam_right="/dev/video0"
     )
 
     half_w = screen_w // 2
     full_h = screen_h
 
-    # Crear ventanas
+    # Create windows
     cv2.namedWindow(params.winname_L, cv2.WINDOW_NORMAL)
     cv2.namedWindow(params.winname_R, cv2.WINDOW_NORMAL)
 
-    # Redimensionar ventanas
+    # Resize windows
     cv2.resizeWindow(params.winname_L, half_w, full_h)
     cv2.resizeWindow(params.winname_R, half_w, full_h)
 
-    # Posicionar ventanas (horizontal)
+    # Positionate windows (tile horizontal)
     cv2.moveWindow(params.winname_L, 0, 0)
     cv2.moveWindow(params.winname_R, half_w, 0)
 
-    CAM_LEFT = 2
-    CAM_RIGHT = 4
-
-    cap_l = cv2.VideoCapture(f"/dev/video{CAM_LEFT}")
-    cap_r = cv2.VideoCapture(f"/dev/video{CAM_RIGHT}")
+    # Open VideoCaptures
+    cap_l = cv2.VideoCapture(params.cam_left)
+    cap_r = cv2.VideoCapture(params.cam_right)
 
     if not cap_l.isOpened() or not cap_r.isOpened():
         print("❌ No se pudieron abrir las cámaras")
         return
 
+    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_l.set(cv2.CAP_PROP_FPS, 30)
+    cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_r.set(cv2.CAP_PROP_FPS, 30)
+    cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+
+    # Show the resolution of each VideoCapture
+    res_width_l = cap_l.get(cv2.CAP_PROP_FRAME_WIDTH)
+    res_height_l = cap_l.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    res_width_r = cap_r.get(cv2.CAP_PROP_FRAME_WIDTH)
+    res_height_r = cap_r.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    print(f"Resolution Camera L = {res_width_l}x{res_height_l}")
+    print(f"Resolution Camera R = {res_width_r}x{res_height_r}")
+
+    #exit()
     print("▶ Presioná ESC para salir")
 
     while True:
@@ -313,11 +365,45 @@ def main():
     cv2.destroyAllWindows()
 
 
-#print(list_cameras())
+print(list_cameras())
 #exit(0)
 
 print("P1 = ", P1)
 print("P2 = ", P2)
 
-main2()
+
+
+#### Choose the best posible resolution
+
+"""
+res_l = list(set(find_resolutions("/dev/video2")))
+res_r = list(set(find_resolutions("/dev/video0")))
+#
+print("resolutions LEFT = ", res_l)
+print("resolutions RIGHT = ", res_r)
+#
+res_l_sorted = sorted(res_l)
+res_r_sorted = sorted(res_r)
+#
+print("resolutions LEFT = ", res_l_sorted)
+print("resolutions RIGHT = ", res_r_sorted)
+#
+if res_l_sorted != res_r_sorted:
+  print("The resolutions of the two cameras don't match. Something is wrong")
+  exit()
+#
+if len(res_l_sorted) == 0:
+  print("Cannot infere the resolution of the camera. Aborting.")
+  exit()
+#
+#resolution = res_l_sorted[-1]
+
+exit()
+"""
+#resolution=(1280, 720)
+#resolution=(800, 600)
+resolution=(1280, 960)
+
+
+main2(resolution)
 

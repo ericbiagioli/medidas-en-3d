@@ -8,9 +8,6 @@ import time
 # CONFIGURACIÓN
 # ============================================================
 
-CAM_LEFT  = 4
-CAM_RIGHT = 2
-
 # ChArUco (AJUSTAR A TU TABLERO REAL)
 CHARUCO_ROWS = 9
 CHARUCO_COLS = 6
@@ -18,8 +15,8 @@ SQUARE_LENGTH = 0.030  # metros
 MARKER_LENGTH = 0.022  # metros
 ARUCO_DICT = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 
-NUM_FRAMES = 30        # mínimo razonable: 20–30
-SAVE_DIR = "calib_frames"
+NUM_FRAMES = 150        # mínimo razonable: 20–30
+SAVE_DIR = "stereo_calibration_charuco_frames"
 
 # ============================================================
 # ARUCO / CHARUCO
@@ -70,7 +67,13 @@ def detect_charuco(frame, debug=False):
 # CAPTURA DE FRAMES
 # ============================================================
 
-def capture_frames():
+def capture_frames(SAVE_DIR="stereo_calibration_charuco_frames",
+  CAM_LEFT="/dev/video0",
+  CAM_RIGHT="/dev/video2",
+  MIN_COMMON_IDS=12,
+  MIN_MOVE_PX=15,
+  COOLDOWN=0.5):
+
     mkdir(SAVE_DIR)
     cap_l = cv2.VideoCapture(CAM_LEFT)
     cap_r = cv2.VideoCapture(CAM_RIGHT)
@@ -82,10 +85,6 @@ def capture_frames():
 
     last_save_time = 0
     last_centroid = None
-
-    MIN_COMMON_IDS = 12
-    MIN_MOVE_PX = 15
-    COOLDOWN = 0.5
 
     print("▶ Captura automática activada (ESC para salir)\n")
 
@@ -156,8 +155,8 @@ def capture_frames():
             2
         )
 
-        cv2.imshow("Left", vis_l)
-        cv2.imshow("Right", vis_r)
+        cv2.imshow(CAM_LEFT, vis_l)
+        cv2.imshow(CAM_RIGHT, vis_r)
 
         # ---- AUTO SAVE ----
         if auto_capture:
@@ -315,7 +314,13 @@ def stereo_calibrate(K1, D1, K2, D2, image_size):
 # ============================================================
 
 def main():
-    capture_frames()
+
+    capture_frames(SAVE_DIR="stereo_calibration_charuco_frames",
+      CAM_LEFT="/dev/video0",
+      CAM_RIGHT="/dev/video2",
+      MIN_COMMON_IDS=12,
+      MIN_MOVE_PX=15,
+      COOLDOWN=2.0)
 
     left_images  = sorted(glob.glob(f"{SAVE_DIR}/left_*.png"))
     right_images = sorted(glob.glob(f"{SAVE_DIR}/right_*.png"))
