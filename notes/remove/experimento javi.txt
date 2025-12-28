@@ -1,0 +1,38 @@
+JAVI, ESTA DEMO ESTA HECHA CON LA WEBCAM DE LA LAPTOP
+
+No esta calibrada, es una webcam chotísima y es UNA. 
+
+Y el objeto con el que mido ni siquiera está muy bien definido.
+
+Así y todo, tiene 2-3mm de error. Mirá esto.
+
+
+
+
+
+Apoyé sobre la cinta métrica en 10 y en 20
+
+midió 10.5cm
+
+Pero está todo hecho MUY rudimentario y así y todo le pasa cerca.
+
+Calibrando la cámara, poniéndole una cámara mejor, y
+
+USANDO UN MODELO ENTRENADO DE IA QUE CALCULE MEJOR LOS VÉRTICES DEL ARUCO
+
+va a tener una precisión tremenda.
+
+La detección de vértices del aruco no es muy estabkle. Varía un poquito al variar las condiciones de luz y etc etc. Por mas que se le pueden hacer algunas cosas para que quede un poco mas estable no es algo "super estable". Hay que usar algún extractor de estas cosas basado en IA, que seguro que existe. Voy a buscar.
+
+
+Igualmente, también voy a progresar con el enfoque basado en el led esférico y los fotodiodos. Con ese enfoque vamos a tener precisión MUCHO mayor que con este.
+
+Pero este está bueno porque no necesita NADA. Solo necesita un objeto que imprimimos en 3D por dos mangod y se va a poder medir con el teléfono celular (si es que queremos darle esa forma al producto).
+
+Una de las formas que puede tener es: un objeto (que nos sale dos mangos, es un plástico de forma conocida que tiene algunos ArUcos) y en la cajita del objeto viene una explicación que dice "decargate <TAL APP> en tu teléfono y empezá a medir". Y listo... El tipo se descarga la app y usa el lapicito plástico que compró para medir cosas con el mismo teléfono.
+
+Igual falta agregarle el proceso de calibración.
+
+CREO que con el proceso de calibración y con una cámara mejor va a mejorar bastamte. También creo que si es que encuentro un modelo basado en IA que extraiga ArUcos y que calcule con mayor precisión los v;ertices (y que sea estable) también va a mejorar.
+
+Lo que hice por ahora es que en vez de sacar el ArUco de UN frame, saca la media de muchos arucos. Tenés que dejar quieto el lapiz 3 segundos y con eso calcula. 

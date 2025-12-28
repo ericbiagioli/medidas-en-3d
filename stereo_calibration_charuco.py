@@ -269,14 +269,14 @@ def stereo_calibrate(K1, D1, K2, D2, image_size):
         cr, ir = detect_charuco(img_r)
 
         if cl is None or cr is None:
-            print("⚠️ ChArUco no detectado en ambos")
+            #print("⚠️ ChArUco no detectado en ambos")
             continue
 
         common_ids = np.intersect1d(il.flatten(), ir.flatten())
-        print("IDs comunes:", common_ids)
+        #print("IDs comunes:", common_ids)
 
         if len(common_ids) < 6:
-            print("⚠️ Muy pocos puntos comunes")
+            #print("⚠️ Muy pocos puntos comunes")
             continue
 
         obj = []
@@ -298,7 +298,7 @@ def stereo_calibrate(K1, D1, K2, D2, image_size):
         imgpoints_l.append(np.array(pts_l, dtype=np.float32))
         imgpoints_r.append(np.array(pts_r, dtype=np.float32))
 
-    print(f"\n✔ Vistas estéreo válidas: {len(objpoints)}")
+    #print(f"\n✔ Vistas estéreo válidas: {len(objpoints)}")
 
     if len(objpoints) == 0:
         raise RuntimeError("❌ No hay vistas estéreo válidas")
@@ -326,12 +326,12 @@ def stereo_calibrate(K1, D1, K2, D2, image_size):
 
 def main():
 
-    capture_frames(SAVE_DIR="stereo_calibration_charuco_frames",
-      CAM_LEFT="/dev/video0",
-      CAM_RIGHT="/dev/video2",
-      MIN_COMMON_IDS=12,
-      MIN_MOVE_PX=15,
-      COOLDOWN=2.0)
+    #capture_frames(SAVE_DIR="stereo_calibration_charuco_frames",
+    #  CAM_LEFT="/dev/video0",
+    #  CAM_RIGHT="/dev/video2",
+    #  MIN_COMMON_IDS=12,
+    #  MIN_MOVE_PX=15,
+    #  COOLDOWN=2.0)
 
     left_images  = sorted(glob.glob(f"{SAVE_DIR}/left_*.png"))
     right_images = sorted(glob.glob(f"{SAVE_DIR}/right_*.png"))
@@ -345,12 +345,14 @@ def main():
     print("\n▶ Calibración estéreo")
     R, T = stereo_calibrate(K1, D1, K2, D2, image_size)
 
+    print("Size passed to stereoRectify: ", image_size)
     R1, R2, P1, P2, Q, _, _ = cv2.stereoRectify(
         K1, D1,
         K2, D2,
         image_size,
         R, T,
-        flags=cv2.CALIB_ZERO_DISPARITY
+        flags=cv2.CALIB_ZERO_DISPARITY,
+        alpha=0
     )
 
     np.savez(

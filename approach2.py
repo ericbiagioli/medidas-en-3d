@@ -2,423 +2,397 @@ import cv2
 import numpy as np
 import tkinter as tk
 from types import SimpleNamespace
+import os
 
 from helpers import show_fitted
-from helpers import get_distance
-from helpers import list_cameras
 
-# Reemplazá estas matrices por las TUYAS
-# P1 y P2 son matrices de proyección 3x4
-####P1 = np.array([
-####    [700, 0, 640,   0],
-####    [0, 700, 360,   0],
-####    [0,   0,   1,   0]
-####], dtype=np.float64)
-####
-####P2 = np.array([
-####    [700, 0, 640, -280],   # baseline ~0.40m * focal
-####    [0, 700, 360,    0],
-####    [0,   0,   1,    0]
-####], dtype=np.float64)
-####
+
+# =========================
+# Load stereo calibration
+# =========================
+
 data = np.load("stereo_charuco_calibration.npz")
 
 K1 = data["K1"]
 D1 = data["D1"]
 K2 = data["K2"]
 D2 = data["D2"]
+
+R1 = data["R1"]
+R2 = data["R2"]
 P1 = data["P1"]
 P2 = data["P2"]
+Q  = data["Q"]
 
 
-MARKER_SIZE = 0.043
-
-def process_video(params, debug=True):
-
-  devL = "/dev/video0"
-  devR = "/dev/video2"
-
-  capL = cv2.VideoCapture(devL, cv2.CAP_V4L2)
-  capR = cv2.VideoCapture(devR, cv2.CAP_V4L2)
-  if not capL.isOpened() or not capR.isOpened():
-    print("Couldn't open some of the VideoCaptures.")
-    exit()
-
-  # Mitigate delay between captures.
-  # They won't be perfectly syncronized, but at least to the best try.
-  # Set the buffering to 1 (the minimum, and discard 1 frame when reading).
-  capL.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-  capR.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-  ## Show resolutions
-  if debug:
-    L_w = capL.get(cv2.CAP_PROP_FRAME_WIDTH)
-    L_h = capL.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    R_w = capR.get(cv2.CAP_PROP_FRAME_WIDTH)
-    R_h = capR.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    print(f"Resolution Left Camera = {L_w}x{L_h}")
-    print(f"Resolution Right Camera = {R_w}x{R_h}")
-
-  while True:
-    # Discard one frame (buffered)
-    capL.grab()
-    capR.grab()
-    ret_L, f1 = capL.retrieve()
-    ret_R, f2 = capR.retrieve()
-    # Read the frame
-    ret_L, frame_L = capL.read()
-    ret_R, frame_R = capR.read()
-
-    if not ret_L or not ret_R:
-      if not ret_L:
-        print("No se pudo leer el frame de la cámara L")
-      if not ret_R:
-        print("No se pudo leer el frame de la cámara R")
-      continue
-
-    show_fitted(params.winname_L, frame_L)
-    show_fitted(params.winname_R, frame_R)
-
-    k = cv2.waitKey(1) & 0xFF
-    if k == ord('q'):
-      break
-
-  cap.release()
 
 
-def triangulate_points(pts_l, pts_r):
+ARUCO_SIZE = 0.043
+aruco_3d = np.array([
+    [-ARUCO_SIZE/2,  ARUCO_SIZE/2, 0],
+    [ ARUCO_SIZE/2,  ARUCO_SIZE/2, 0],
+    [ ARUCO_SIZE/2, -ARUCO_SIZE/2, 0],
+    [-ARUCO_SIZE/2, -ARUCO_SIZE/2, 0],
+], dtype=np.float32)
+#tip_aruco = np.array([-0.040, 0.145, -0.003])  # ejemplo
+tip_aruco = np.array([-0.025, 0.0, 0.00])  # ejemplo
+
+
+# =========================
+# Utilities
+# =========================
+
+def rigid_alignment(A, B):
     """
-    pts_l, pts_r: (4,2)
-    devuelve: (4,3)
+    A, B: (N,3)
+    Encuentra R, t tal que R @ A + t ≈ B
     """
-    pts_3d = []
+    A_mean = A.mean(axis=0)
+    B_mean = B.mean(axis=0)
 
-    for i in range(4):
-        pl = pts_l[i].reshape(2, 1)
-        pr = pts_r[i].reshape(2, 1)
+    A_c = A - A_mean
+    B_c = B - B_mean
 
-        X = cv2.triangulatePoints(P1, P2, pl, pr)
-        X = (X[:3] / X[3]).flatten()
-        pts_3d.append(X)
-
-    return np.array(pts_3d)
-
-
-
-def detect_marker_center(frame):
-    """
-    Detecta el primer ArUco y devuelve:
-    - centro (x,y) subpíxel
-    - id del marcador
-    """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-    corners, ids, _ = detector.detectMarkers(gray)
-
-    if ids is None:
-        return None, None
-
-    # Tomamos el primer marcador
-    pts = corners[0][0]  # (4,2)
-    center = pts.mean(axis=0)
-
-    return center.astype(np.float32), ids[0][0]
-
-def detect_marker(frame):
-    """
-    Devuelve:
-    - corners (4,2)
-    - id
-    """
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    corners, ids, _ = detector.detectMarkers(gray)
-
-    if ids is None:
-        return None, None
-
-    return corners[0][0].astype(np.float32), ids[0][0]
-
-
-
-def estimate_pose_from_3d(pts_3d):
-    """
-    Ajusta R,t a partir de puntos 3D
-    """
-
-    s = MARKER_SIZE / 2.0
-
-    # Sistema de coordenadas del marcador
-    obj_pts = np.array([
-        [-s,  s, 0],
-        [ s,  s, 0],
-        [ s, -s, 0],
-        [-s, -s, 0]
-    ], dtype=np.float64)
-
-    # Centrar ambos conjuntos
-    obj_centroid = obj_pts.mean(axis=0)
-    cam_centroid = pts_3d.mean(axis=0)
-
-    obj_pts_c = obj_pts - obj_centroid
-    cam_pts_c = pts_3d - cam_centroid
-
-    # SVD (Kabsch)
-    H = obj_pts_c.T @ cam_pts_c
+    H = A_c.T @ B_c
     U, _, Vt = np.linalg.svd(H)
-    R = Vt.T @ U.T
 
+    R = Vt.T @ U.T
     if np.linalg.det(R) < 0:
-        Vt[-1, :] *= -1
+        Vt[2,:] *= -1
         R = Vt.T @ U.T
 
-    t = cam_centroid - R @ obj_centroid
-
+    t = B_mean - R @ A_mean
     return R, t
 
 
-def draw_axes(frame, corners):
-    c = corners.mean(axis=0).astype(int)
-    cv2.line(frame, c, c + (30, 0), (0,0,255), 2)
-    cv2.line(frame, c, c + (0,30), (0,255,0), 2)
+def project_rectified(P, X):
+    """
+    Proyección en imágenes rectificadas
+    P: 3x4
+    X: (3,)
+    """
+    Xh = np.hstack([X, 1.0])      # (4,)
+    x = P @ Xh                   # (3,)
+    return (x[:2] / x[2]).astype(np.float32)
 
+
+def triangulate_point_rectified(pt_l, pt_r):
+    """
+    pt_l, pt_r: (2,)
+    return: (3,)
+    """
+    pl = pt_l.reshape(2, 1)
+    pr = pt_r.reshape(2, 1)
+
+    Xh = cv2.triangulatePoints(P1, P2, pl, pr)
+    X  = (Xh[:3] / Xh[3]).flatten()
+    return X
+
+
+# =========================
+# ArUco
+# =========================
 
 ar_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_1000)
 ar_pars = cv2.aruco.DetectorParameters()
-
-ar_pars.adaptiveThreshWinSizeMin = 5
-ar_pars.adaptiveThreshWinSizeMax = 23
-ar_pars.adaptiveThreshWinSizeStep = 4
-
-ar_pars.adaptiveThreshConstant = 7
-
-ar_pars.minCornerDistanceRate = 0.05
-ar_pars.minMarkerPerimeterRate = 0.03
-ar_pars.maxMarkerPerimeterRate = 4.0
-
 ar_pars.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-ar_pars.cornerRefinementWinSize = 7
-ar_pars.cornerRefinementMaxIterations = 100
-ar_pars.cornerRefinementMinAccuracy = 1e-6
 
 detector = cv2.aruco.ArucoDetector(ar_dict, ar_pars)
 
 
+def aruco_points_and_center(frame):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    corners, ids, rejected = detector.detectMarkers(gray)
 
-def find_resolutions(device):
-  resols = [
-    (640,480),
-    (800,600),
-    (1280,720),
-    (1920,1080),
-    (2304,1536),
-  ]
+    if ids is None:
+        return None, None
 
-  retval = []
-  cap = cv2.VideoCapture(device)
-  if not cap.isOpened():
-      print(f"Cannot open {device}.")
-      return retval
+    pts = corners[0][0].astype(np.float32)   # (4,2)
+    #(topLeft, topRight, bottomRight, bottomLeft) = corners
+    center = pts.mean(axis=0)
 
-  cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-  cap.set(cv2.CAP_PROP_FPS, 30)
-  cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-  cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    return pts, center
 
-  for w,h in resols:
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-    ret, frame = cap.read()
-    if ret:
-        retval.append( (frame.shape[1], frame.shape[0]) )
+def project_with_P(P, X):
+    Xh = np.append(X, 1.0)   # X es (3,)
+    x = P @ Xh               # OK: (3x4)@(4,)
+    return (x[:2] / x[2]).astype(np.float32)
 
-  cap.release()
-  return retval
+# =========================
+# Main
+# =========================
 
 
+ARUCO_SIZE = 0.043
+aruco_3d = np.array([
+    [-ARUCO_SIZE/2,  ARUCO_SIZE/2, 0],
+    [ ARUCO_SIZE/2,  ARUCO_SIZE/2, 0],
+    [ ARUCO_SIZE/2, -ARUCO_SIZE/2, 0],
+    [-ARUCO_SIZE/2, -ARUCO_SIZE/2, 0],
+], dtype=np.float32)
+#tip_aruco = np.array([-0.040, 0.145, -0.003])  # ejemplo
+tip_aruco = np.array([-0.025, -0.08, 0.003])  # ejemplo
 
-def main2(resolution):
+def rigid_alignment(A, B):
+    """
+    A, B: (N,3)
+    Encuentra R, t tal que R @ A + t ≈ B
+    """
+    A_mean = A.mean(axis=0)
+    B_mean = B.mean(axis=0)
+
+    A_c = A - A_mean
+    B_c = B - B_mean
+
+    H = A_c.T @ B_c
+    U, _, Vt = np.linalg.svd(H)
+
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt[2,:] *= -1
+        R = Vt.T @ U.T
+
+    t = B_mean - R @ A_mean
+    return R, t
+
+
+def mkdir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+def main(resolution=(640, 480)):
+
+    print("P1:\n", P1)
+    print("P2:\n", P2)
+    print("Image size assumed by P1:",
+          P1[0,2]*2, P1[1,2]*2)
+
+
+    TESTS_DIR="tests"
+    mkdir(TESTS_DIR)
+
+    # ---------------------
+    # Windows
+    # ---------------------
+
     root = tk.Tk()
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
     root.destroy()
 
-    params = SimpleNamespace(
-        winname_L="Webcam_L",
-        winname_R="Webcam_R",
-        screen_w=screen_w,
-        screen_h=screen_h,
-        cam_left="/dev/video2",
-        cam_right="/dev/video0"
-    )
-
     half_w = screen_w // 2
-    full_h = screen_h
+    half_h = screen_h // 2
 
-    # Create windows
-    cv2.namedWindow(params.winname_L, cv2.WINDOW_NORMAL)
-    cv2.namedWindow(params.winname_R, cv2.WINDOW_NORMAL)
+    cv2.namedWindow("L", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("R", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("L-rect", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("R-rect", cv2.WINDOW_NORMAL)
 
-    # Resize windows
-    cv2.resizeWindow(params.winname_L, half_w, full_h)
-    cv2.resizeWindow(params.winname_R, half_w, full_h)
+    cv2.resizeWindow("L", half_w, half_h)
+    cv2.resizeWindow("R", half_w, half_h)
+    cv2.resizeWindow("L-rect", half_w, half_h)
+    cv2.resizeWindow("R-rect", half_w, half_h)
 
-    # Positionate windows (tile horizontal)
-    cv2.moveWindow(params.winname_L, 0, 0)
-    cv2.moveWindow(params.winname_R, half_w, 0)
+    cv2.moveWindow("L", 0, 0)
+    cv2.moveWindow("R", half_w, 0)
+    cv2.moveWindow("L-rect", 0, half_h)
+    cv2.moveWindow("R-rect", half_w, half_h)
 
-    # Open VideoCaptures
-    cap_l = cv2.VideoCapture(params.cam_left)
-    cap_r = cv2.VideoCapture(params.cam_right)
+    # ---------------------
+    # Cameras
+    # ---------------------
 
-    if not cap_l.isOpened() or not cap_r.isOpened():
-        print("❌ No se pudieron abrir las cámaras")
-        return
+    cap_l = cv2.VideoCapture("/dev/video2")
+    cap_r = cv2.VideoCapture("/dev/video0")
 
-    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-    cap_l.set(cv2.CAP_PROP_FPS, 30)
-    cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_l.set(cv2.CAP_PROP_FRAME_WIDTH,  resolution[0])
     cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-    cap_r.set(cv2.CAP_PROP_FPS, 30)
-    cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+    cap_r.set(cv2.CAP_PROP_FRAME_WIDTH,  resolution[0])
     cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
 
-    # Show the resolution of each VideoCapture
-    res_width_l = cap_l.get(cv2.CAP_PROP_FRAME_WIDTH)
-    res_height_l = cap_l.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    res_width_r = cap_r.get(cv2.CAP_PROP_FRAME_WIDTH)
-    res_height_r = cap_r.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    print(f"Resolution Camera L = {res_width_l}x{res_height_l}")
-    print(f"Resolution Camera R = {res_width_r}x{res_height_r}")
+    h, w = resolution[1], resolution[0]
 
-    #exit()
-    print("▶ Presioná ESC para salir")
+    # ---------------------
+    # Rectification maps
+    # ---------------------
 
+    map1x, map1y = cv2.initUndistortRectifyMap(K1, D1, R1, P1, resolution, cv2.CV_32FC1)
+    map2x, map2y = cv2.initUndistortRectifyMap(K2, D2, R2, P2, resolution, cv2.CV_32FC1)
+
+    print("▶ ESC para salir")
+
+    # =====================
+    # Loop
+    # =====================
+
+    X1 = None
+    X2 = None
+    dist = None
+    saved_a = 1
+    saved_b = 1
+    saved_c = 1
     while True:
-        ret_l, frame_l = cap_l.read()
-        ret_r, frame_r = cap_r.read()
 
-        if not ret_l or not ret_r:
-            print("❌ Error leyendo cámaras")
+        ok_l, frame_l = cap_l.read()
+        ok_r, frame_r = cap_r.read()
+
+        if not ok_l or not ok_r:
+            continue
+
+        cansave = False
+
+        l_rect = cv2.remap(frame_l, map1x, map1y, cv2.INTER_LINEAR)
+        r_rect = cv2.remap(frame_r, map2x, map2y, cv2.INTER_LINEAR)
+
+
+        ## pts_l
+
+        pts_l, cl_float = aruco_points_and_center(frame_l)
+        pts_r, cr_float = aruco_points_and_center(frame_r)
+
+        pts_l_rect, cl_rect_float = aruco_points_and_center(l_rect)
+        pts_r_rect, cr_rect_float = aruco_points_and_center(r_rect)
+
+        ##print(pts_l)
+
+        if cl_float is not None and cr_float is not None:
+          cl = tuple(np.round(cl_float).astype(int))
+          cr = tuple(np.round(cr_float).astype(int))
+
+          cv2.circle(frame_l, cl, 5, (0,255,0), -1)
+          cv2.circle(frame_r, cr, 5, (0,255,0), -1)
+
+          c3d = cv2.triangulatePoints(P1, P2, cl_float.reshape(2,1), cr_float.reshape(2,1))
+          c3d_flat = (c3d[:3] / c3d[3]).flatten()   # ahora sí (3,)
+          reproy_l = project_with_P(P1, c3d_flat)
+          reproy_r = project_with_P(P2, c3d_flat)
+          reproy_l = tuple(np.round(reproy_l).astype(int))
+          reproy_r = tuple(np.round(reproy_r).astype(int))
+
+          cv2.circle(frame_l, reproy_l, 5, (255,255,0), -1)
+          cv2.circle(frame_r, reproy_r, 5, (255,255,0), -1)
+
+        if cl_rect_float is not None and cr_rect_float is not None:
+
+          ##print("y_L_rect used:", cl_rect_float[1])
+          ##print("image height:", l_rect.shape[0])
+
+
+          ## Centro en imagen rectificada
+
+          cl_rect = tuple(np.round(cl_rect_float).astype(int))
+          cr_rect = tuple(np.round(cr_rect_float).astype(int))
+
+          cv2.circle(l_rect, cl_rect, 20, (0,255,0), -1)
+          cv2.circle(r_rect, cr_rect, 20, (0,255,0), -1)
+
+          ## Triangulación y reproyección del centro
+
+          c3d_rect = cv2.triangulatePoints(P1, P2, cl_rect_float.reshape(2,1), cr_rect_float.reshape(2,1))
+          c3d_rect_flat = (c3d_rect[:3] / c3d_rect[3]).flatten()   # ahora sí (3,)
+          reproy_l_rect = project_with_P(P1, c3d_rect_flat)
+          reproy_r_rect = project_with_P(P2, c3d_rect_flat)
+          reproy_l_rect = tuple(np.round(reproy_l_rect).astype(int))
+          reproy_r_rect = tuple(np.round(reproy_r_rect).astype(int))
+
+          cv2.circle(l_rect, reproy_l_rect, 10, (255,0,0), -1)
+          cv2.circle(r_rect, reproy_r_rect, 10, (255,0,0), -1)
+
+          ## Utilizar disparidad en lugar de triangular
+
+          disp = cl_rect_float[0] - cr_rect_float[0]
+          vec = np.array([cl_rect_float[0], cl_rect_float[1], disp, 1.0])
+          Xqh = Q @ vec
+          Xq = (Xqh[:3] / Xqh[3])
+          reproj_using_Q_l = project_with_P(P1, Xq)
+          reproj_using_Q_l = tuple(np.round(reproj_using_Q_l).astype(int))
+
+          cv2.circle(l_rect, reproj_using_Q_l, 5, (0,0,255), -1)
+
+
+          ## dibujar la punta del lapiz
+          X_corners = []
+          for i in range(4):
+              X = triangulate_point_rectified(
+                  pts_l_rect[i],
+                  pts_r_rect[i]
+              )
+              X_corners.append(X)
+          X_corners = np.array(X_corners)
+          R_aruco, t_aruco = rigid_alignment(aruco_3d, X_corners)
+          X_tip = R_aruco @ tip_aruco + t_aruco
+          pL_tip = project_with_P(P1, X_tip)
+          pR_tip = project_with_P(P2, X_tip)
+          pL_tip = tuple(np.round(pL_tip).astype(int))
+          pR_tip = tuple(np.round(pR_tip).astype(int))
+          cv2.circle(l_rect, pL_tip, 6, (0,255,255), -1)
+
+
+        show_fitted("L", frame_l)
+        show_fitted("R", frame_r)
+        show_fitted("L-rect", l_rect)
+        show_fitted("R-rect", r_rect)
+
+        if cl_float is not None and cr_float is not None and cl_rect_float is not None and cr_rect_float is not None:
+          cansave = True
+
+        k = cv2.waitKey(1)
+        if k == 27:
             break
-
-#        center_l, id_l = detect_marker_center(frame_l)
-#        center_r, id_r = detect_marker_center(frame_r)
-#
-#        if center_l is not None and center_r is not None:
-#            if id_l == id_r:
-#                X = triangulate_point(center_l, center_r)
-#
-#                x, y, z = X
-#                print(f"ID {id_l} → X={x:.4f}  Y={y:.4f}  Z={z:.4f} m")
-#
-#                # Dibujar centro
-#                cv2.circle(frame_l, tuple(center_l.astype(int)), 5, (0,255,0), -1)
-#                cv2.circle(frame_r, tuple(center_r.astype(int)), 5, (0,255,0), -1)
-
-        pts_l, id_l = detect_marker(frame_l)
-        pts_r, id_r = detect_marker(frame_r)
-
-        if pts_l is not None and pts_r is not None and id_l == id_r:
-
-            pts_3d = triangulate_points(pts_l, pts_r)
-            R, t = estimate_pose_from_3d(pts_3d)
-
-            #print(f"\nID {id_l}")
-            #print("R =")
-            #print(R)
-            #print("t =", t)
-
-            draw_axes(frame_l, pts_l)
-            draw_axes(frame_r, pts_r)
-
-        show_fitted(params.winname_L, frame_l)
-        show_fitted(params.winname_R, frame_r)
-
-        if cv2.waitKey(1) == 27:
-            break
+        elif k == ord('a') or k == ord('b') or k == ord('c'):
+          print("Se apreto la tecla C")
+          if X1 is None:
+            X1 = X_tip
+          elif X2 is None:
+            X2 = X_tip
+            dist = np.linalg.norm(X2 - X1)
+            if cansave == False:
+              print("Cannot save. Invalid frames")
+              continue
+            if k == ord('a'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=20.0_{saved_a:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=20.0_{saved_a:02d}.png", frame_r)
+              saved_a = saved_a + 1
+            elif k == ord('b'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=10.0_{saved_b:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=10.0_{saved_b:02d}.png", frame_r)
+              saved_b = saved_b + 1
+            elif k == ord('c'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=1.0_{saved_c:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=1.0_{saved_c:02d}.png", frame_r)
+              saved_c = saved_c + 1
+          else:
+            X1 = X2;
+            X2 = X_tip
+            print("Seteando ambos")
+            print("calculando dist...")
+            dist = np.linalg.norm(X2 - X1)
+            print("dist = ", dist)
+            if cansave == False:
+              print("Cannot save. Invalid frames")
+              continue
+            if k == ord('a'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=20.0_{saved_a:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=20.0_{saved_a:02d}.png", frame_r)
+              saved_a = saved_a + 1
+              print(f"saved_a = {saved_a-1}, saved_b = {saved_b-1}, saved_c = {saved_c-1}")
+            elif k == ord('b'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=10.0_{saved_b:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=10.0_{saved_b:02d}.png", frame_r)
+              saved_b = saved_b + 1
+              print(f"saved_a = {saved_a-1}, saved_b = {saved_b-1}, saved_c = {saved_c-1}")
+            elif k == ord('c'):
+              cv2.imwrite(f"{TESTS_DIR}/left_pos=1.0_{saved_c:02d}.png", frame_l)
+              cv2.imwrite(f"{TESTS_DIR}/right_pos=1.0_{saved_c:02d}.png", frame_r)
+              saved_c = saved_c + 1
+              print(f"saved_a = {saved_a-1}, saved_b = {saved_b-1}, saved_c = {saved_c-1}")
+          print("X1 = ", X1, "  X2 = ", X2,    "dist = ", dist)
 
     cap_l.release()
     cap_r.release()
     cv2.destroyAllWindows()
 
 
-
-def main():
-    # Obtener tamaño de pantalla usando Tk
-    root = tk.Tk()
-    screen_w = root.winfo_screenwidth()
-    screen_h = root.winfo_screenheight()
-    root.destroy()
-
-    params = SimpleNamespace(
-        winname_L="Webcam_L",
-        winname_R="Webcam_R",
-        screen_w=screen_w,
-        screen_h=screen_h
-    )
-
-    half_w = screen_w // 2
-    full_h = screen_h
-
-    # Crear ventanas
-    cv2.namedWindow(params.winname_L, cv2.WINDOW_NORMAL)
-    cv2.namedWindow(params.winname_R, cv2.WINDOW_NORMAL)
-
-    # Redimensionar ventanas
-    cv2.resizeWindow(params.winname_L, half_w, full_h)
-    cv2.resizeWindow(params.winname_R, half_w, full_h)
-
-    # Posicionar ventanas (horizontal)
-    cv2.moveWindow(params.winname_L, 0, 0)
-    cv2.moveWindow(params.winname_R, half_w, 0)
-
-    # Procesamiento principal
-    process_video(params)
-
-    cv2.destroyAllWindows()
-
-
-print(list_cameras())
-#exit(0)
-
-print("P1 = ", P1)
-print("P2 = ", P2)
-
-
-
-#### Choose the best posible resolution
-
-"""
-res_l = list(set(find_resolutions("/dev/video2")))
-res_r = list(set(find_resolutions("/dev/video0")))
-#
-print("resolutions LEFT = ", res_l)
-print("resolutions RIGHT = ", res_r)
-#
-res_l_sorted = sorted(res_l)
-res_r_sorted = sorted(res_r)
-#
-print("resolutions LEFT = ", res_l_sorted)
-print("resolutions RIGHT = ", res_r_sorted)
-#
-if res_l_sorted != res_r_sorted:
-  print("The resolutions of the two cameras don't match. Something is wrong")
-  exit()
-#
-if len(res_l_sorted) == 0:
-  print("Cannot infere the resolution of the camera. Aborting.")
-  exit()
-#
-#resolution = res_l_sorted[-1]
-
-exit()
-"""
-#resolution=(1280, 720)
-#resolution=(800, 600)
-#resolution=(1280, 960)
-resolution=(640, 480)
-
-
-main2(resolution)
+if __name__ == "__main__":
+    main((640, 480))
 
