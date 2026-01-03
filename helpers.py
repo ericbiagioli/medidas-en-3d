@@ -54,9 +54,22 @@ def show_fitted(win, img):
 
     _, _, win_w, win_h = cv2.getWindowImageRect(win)
 
+
     scale = min(win_w / img_w, win_h / img_h)
+
     new_w = int(img_w * scale)
     new_h = int(img_h * scale)
+
+    #print("img_w = ", img_w)
+    #print("img_h = ", img_h)
+    #
+    #print("win_w = ", win_w)
+    #print("win_h = ", win_h)
+    #
+    #print("scale = ", scale)
+    #
+    #print("new_w = ", new_w)
+    #print("new_h = ", new_h)
 
     resized = cv2.resize(img, (new_w, new_h))
     cv2.imshow(win, resized)

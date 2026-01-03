@@ -276,8 +276,8 @@ def main(resolution, debug=True):
         # Discard one frame (buffered)
         cap_l.grab()
         cap_r.grab()
-        ret_l, f1 = cap_l.retrieve()
-        ret_r, f2 = cap_r.retrieve()
+        ret_l, _ = cap_l.retrieve()
+        ret_r, _ = cap_r.retrieve()
         # Read the frame
         ret_l, frame_l = cap_l.read()
         ret_l, frame_r = cap_r.read()
