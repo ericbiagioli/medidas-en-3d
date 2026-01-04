@@ -5,11 +5,12 @@ from types import SimpleNamespace
 import os
 import glob
 
-from helpers import show_fitted
+from helpers import *
 
 # =========================
 # Utilities
 # =========================
+
 
 def rigid_alignment(A, B):
     """
@@ -99,6 +100,7 @@ def project_with_P(P, X):
 # Main
 # =========================
 
+
 def rigid_alignment(A, B):
     """
     A, B: (N,3)
@@ -130,7 +132,9 @@ def mkdir(path):
 ##
 ## To do: tiene que pasarse como parámetro el aruco_3d, el aruco_sz y el needle_tip
 ##
-def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=True, img_size = (640, 480)):
+def estimate_3d_position(
+    fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=True, img_size=(640, 480)
+):
     # Calibration matrices
     data = np.load(calib)
 
@@ -144,7 +148,6 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
     P1 = data["P1"]
     P2 = data["P2"]
     Q = data["Q"]
-
 
     # Images
     L = cv2.imread(fn_l)
@@ -166,7 +169,12 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
     points_L_rect, center_float_L_rect = aruco_points_and_center(L_rect)
     points_R_rect, center_float_R_rect = aruco_points_and_center(R_rect)
 
-    if points_L is None or points_R is None or points_L_rect is None or points_R_rect is None:
+    if (
+        points_L is None
+        or points_R is None
+        or points_L_rect is None
+        or points_R_rect is None
+    ):
         print("No se han detectado arucos")
         return None
 
@@ -175,10 +183,14 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
     center_int_L_rect = None
     center_int_R_rect = None
 
-    if center_float_L is not None: center_int_L = tuple(np.round(center_float_L).astype(int))
-    if center_float_R is not None: center_int_R = tuple(np.round(center_float_R).astype(int))
-    if center_float_L_rect is not None: center_int_L_rect = tuple(np.round(center_float_L_rect).astype(int))
-    if center_float_R_rect is not None: center_int_R_rect = tuple(np.round(center_float_R_rect).astype(int))
+    if center_float_L is not None:
+        center_int_L = tuple(np.round(center_float_L).astype(int))
+    if center_float_R is not None:
+        center_int_R = tuple(np.round(center_float_R).astype(int))
+    if center_float_L_rect is not None:
+        center_int_L_rect = tuple(np.round(center_float_L_rect).astype(int))
+    if center_float_R_rect is not None:
+        center_int_R_rect = tuple(np.round(center_float_R_rect).astype(int))
 
     # 3D coordinates of the vertices of the aruco
     #
@@ -198,7 +210,9 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
     # Homogeneus coordinates
     # Xh = (x * w, y * w, z * w, w)
 
-    points_3d_h = cv2.triangulatePoints(P1, P2, points_L_rect.T.astype(np.float64), points_R_rect.T.astype(np.float64))
+    points_3d_h = cv2.triangulatePoints(
+        P1, P2, points_L_rect.T.astype(np.float64), points_R_rect.T.astype(np.float64)
+    )
     # Euclidean coordinates
     # (x, y, z) = (Xh[0] / w, Xh[1] / w, Xh[2] / w)
     points_3d = (points_3d_h[:3] / points_3d_h[3]).T
@@ -213,10 +227,14 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
         vis_L_rect = L_rect.copy()
         vis_R_rect = R_rect.copy()
 
-        if center_int_L is not None: cv2.circle(vis_L, center_int_L, 8, (0, 255, 0), -1)
-        if center_int_R is not None: cv2.circle(vis_R, center_int_R, 8, (0, 255, 0), -1)
-        if center_int_L_rect is not None: cv2.circle(vis_L_rect, center_int_L_rect, 8, (0, 255, 0), -1)
-        if center_int_R_rect is not None: cv2.circle(vis_R_rect, center_int_R_rect, 8, (0, 255, 0), -1)
+        if center_int_L is not None:
+            cv2.circle(vis_L, center_int_L, 8, (0, 255, 0), -1)
+        if center_int_R is not None:
+            cv2.circle(vis_R, center_int_R, 8, (0, 255, 0), -1)
+        if center_int_L_rect is not None:
+            cv2.circle(vis_L_rect, center_int_L_rect, 8, (0, 255, 0), -1)
+        if center_int_R_rect is not None:
+            cv2.circle(vis_R_rect, center_int_R_rect, 8, (0, 255, 0), -1)
 
         cv2.imshow("L", vis_L)
         cv2.imshow("R", vis_R)
@@ -227,36 +245,45 @@ def estimate_3d_position(fn_l, fn_r, calib, aruco_3d, needle_tip, visualization=
 
     return X_tip
 
-def compute_measure_stereo(l1, r1, l2, r2, calib, aruco_3d, needle_tip, visualization=True):
+
+def compute_measure_stereo(
+    l1, r1, l2, r2, calib, aruco_3d, needle_tip, visualization=True
+):
     p1 = estimate_3d_position(l1, r1, calib, aruco_3d, needle_tip, visualization)
     p2 = estimate_3d_position(l2, r2, calib, aruco_3d, needle_tip, visualization)
-    if p1 is None or p2 is None: return None
-    return np.linalg.norm(p1 - p2)
+    return distance(p1, p2)
 
 
 def files_ok(lefts, rights, pref_ls="left_", pref_rs="right_"):
     ls = [os.path.basename(l).replace(pref_ls, "") for l in lefts]
     rs = [os.path.basename(r).replace(pref_rs, "") for r in rights]
-    return (ls == rs)
+    return ls == rs
 
 
 def test_all_pairs_same_set(lefts, rights, calib, expected, aruco_3d, needle_tip):
-    assert (files_ok(lefts, rights))
+    assert files_ok(lefts, rights)
 
     pairs = list(zip(lefts, rights))
 
     for i, (l1, r1) in enumerate(pairs):
-        for l2, r2 in pairs[i + 1:]:
-            detected = compute_measure_stereo(l1, r1, l2, r2, calib, aruco_3d, needle_tip)
+        for l2, r2 in pairs[i + 1 :]:
+            detected = compute_measure_stereo(
+                l1, r1, l2, r2, calib, aruco_3d, needle_tip
+            )
             print(f"Expected: {expected}  Detected: {detected}")
 
-def test_all_pairs_bipartite(lefts1, rights1, lefts2, rights2, calib, expected, aruco_3d, needle_tip):
-    assert (files_ok(lefts1, rights1))
-    assert (files_ok(lefts2, rights2))
+
+def test_all_pairs_bipartite(
+    lefts1, rights1, lefts2, rights2, calib, expected, aruco_3d, needle_tip
+):
+    assert files_ok(lefts1, rights1)
+    assert files_ok(lefts2, rights2)
 
     for l1, r1 in zip(lefts1, rights1):
         for l2, r2 in zip(lefts2, rights2):
-            detected = compute_measure_stereo(l1, r1, l2, r2, calib, aruco_3d, needle_tip)
+            detected = compute_measure_stereo(
+                l1, r1, l2, r2, calib, aruco_3d, needle_tip
+            )
             print(f"Expected: {expected}  Detected: {detected}")
 
 
@@ -276,7 +303,9 @@ def testset1():
 
     # Aruco and needle tip.
     aruco_sz = 0.043
-    aruco_3d = np.array([ [-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0] ] , dtype=np.float32)
+    aruco_3d = np.array(
+        [[-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0]], dtype=np.float32
+    )
     aruco_3d = aruco_3d * (aruco_sz / 2.0)
     needle_tip = np.array([-(aruco_sz / 2.0) - 0.02, -0.145, -0.003])
 
@@ -287,6 +316,7 @@ def testset1():
     test_all_pairs_bipartite(l_1, r_1, l_20, r_20, calib, 19.0, aruco_3d, needle_tip)
     test_all_pairs_bipartite(l_10, r_10, l_20, r_20, calib, 10.0, aruco_3d, needle_tip)
 
+
 if __name__ == "__main__":
-    #testset1()
+    # testset1()
     main()

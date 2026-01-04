@@ -1,130 +1,71 @@
 import cv2
 import numpy as np
+import os
 
 
-
-def find_resolutions(device):
-  resols = [
-    (640,480),
-    (800,600),
-    (1280,720),
-    (1920,1080),
-    (2304,1536),
-  ]
-
-  retval = []
-  cap = cv2.VideoCapture(device)
-  if not cap.isOpened():
-      print(f"Cannot open {device}.")
-      return retval
-
-  cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-  cap.set(cv2.CAP_PROP_FPS, 30)
-  cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-  cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
-  for w,h in resols:
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-    ret, frame = cap.read()
-    if ret:
-        retval.append( (frame.shape[1], frame.shape[0]) )
-
-  cap.release()
-  return retval
+def remove(fn):
+    if os.path.exists(fn):
+        os.remove(fn)
 
 
-def list_cameras(max_devices=10):
-    available = []
-    for i in range(max_devices):
-        cap = cv2.VideoCapture(f"/dev/video{i}")
-        if cap.isOpened():
-            available.append(i)
-            cap.release()
-    return available
+def rmdir(path):
+    if os.path.exists(path) and os.path.isdir(path):
+        shutil.rmtree(path)
 
 
+def mkdir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
-"""
-Ajusta el tamaño de la imagen `img` para que entre en la ventana `win` y
-la muestra.
-"""
+
+def mkdir_empty(path):
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    for p in glob.glob(os.path.join(path, "*")):
+        if os.path.isfile(p) or os.path.islink(p):
+            os.remove(p)
+
+
+def dir_not_exist_or_empty(path):
+    if not os.path.exists(path):
+        return True
+    if os.path.isdir(path) and not os.listdir(path):
+        return True
+    return False
+
+
+def print_tee(*args, fn, **kwargs):
+    f = open(fn, "a")
+    print(*args, **kwargs)
+    print(*args, **kwargs, file=f)
+    f.close()
+
+
 def show_fitted(win, img):
     img_h, img_w = img.shape[:2]
 
     _, _, win_w, win_h = cv2.getWindowImageRect(win)
-
 
     scale = min(win_w / img_w, win_h / img_h)
 
     new_w = int(img_w * scale)
     new_h = int(img_h * scale)
 
-    #print("img_w = ", img_w)
-    #print("img_h = ", img_h)
-    #
-    #print("win_w = ", win_w)
-    #print("win_h = ", win_h)
-    #
-    #print("scale = ", scale)
-    #
-    #print("new_w = ", new_w)
-    #print("new_h = ", new_h)
-
     resized = cv2.resize(img, (new_w, new_h))
     cv2.imshow(win, resized)
 
 
-"""
-Calcula la matriz de cámara y las distorsiones radiales y tangenciales. De
-momento, propongo una aproximación bien simple.
-
-ASUMO QUE el punto principal (esto es: la intersección del eje óptico con
-el sensor) está ubicado exactamente en el centro geométrico del sensor. Esto
-es: (w / 2, h / 2). Esto raramente es así; pero de momento lo asumo.
-@TODO: Analizar si esta suposición afecta a las mediciones. Podría ser que en
-realidad no importe para nuestros fines si el punto principal no es el que
-consideramos.
-
-ASUMO QUE la distancia focal es 0.8 * max(w, h).
-
-ASUMO QUE no hay distorsión (ni radial ni tangencial).
-"""
-def default_camera_matrix(w: int, h: int):
-    focal_length_px = 0.8 * max(w, h)
-    cx = w / 2.0
-    cy = h / 2.0
-    K = np.array([[focal_length_px, 0, cx],
-                  [0, focal_length_px, cy],
-                  [0, 0, 1]], dtype=np.float64)
-
-    distorsion = np.zeros((5, 1), dtype=np.float64)
-
-    return K, distorsion
-
-
-def draw_results(image, results, K, D, marker_length_m):
-    out = image.copy()
-    for r in results:
-        # borde
-        corners = np.array(r['corners'], dtype=np.float32).reshape(-1, 2)
-        corners_i = corners.astype(int)
-        cv2.polylines(out, [corners_i], True, (0, 255, 0), 2)
-
-        # ejes
-        cv2.drawFrameAxes(out, K, D, r['rvec'], r['tvec'], marker_length_m * 0.5)
-
-    return out
-
-def get_distance(p1, p2):
+def distance(p1, p2):
     if p1 is None or p2 is None:
         return None
 
     if isinstance(p1, str) and p1 == "capturing":
-      return None
+        return None
 
     if isinstance(p2, str) and p2 == "capturing":
-      return None
+        return None
 
     p1 = np.asarray(p1, dtype=np.float64).reshape(-1)
     p2 = np.asarray(p2, dtype=np.float64).reshape(-1)
@@ -134,3 +75,19 @@ def get_distance(p1, p2):
 
     return np.linalg.norm(p1 - p2)
 
+
+def detect_charuco(frame, detector, board):
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    corners, ids, _ = detector.detectMarkers(gray)
+
+    if ids is None:
+        return None, None
+
+    _, char_corners, char_ids = cv2.aruco.interpolateCornersCharuco(
+        corners, ids, gray, board
+    )
+
+    if char_ids is None or len(char_ids) < 6:
+        return None, None
+
+    return char_corners, char_ids

@@ -1,0 +1,19 @@
+
+▶ Calibrating left camera.
+RMS LEFT = 0.31169301205253813
+
+▶ Calibrating right camera.
+RMS LEFT = 0.2962038377371416
+
+▶ Calibrating stereo pair.
+RMS STEREO PAIR = 0.44600816404138716
+
+Calibration process completed.
+P1 =
+ [[891.48864489   0.         333.37845993   0.        ]
+ [  0.         891.48864489 234.89580154   0.        ]
+ [  0.           0.           1.           0.        ]]
+P2 =
+ [[891.48864489   0.         333.37845993  63.40836076]
+ [  0.         891.48864489 234.89580154   0.        ]
+ [  0.           0.           1.           0.        ]]

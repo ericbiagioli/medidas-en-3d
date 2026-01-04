@@ -24,44 +24,38 @@ Q = data["Q"]
 MARKER_SIZE = 0.043
 
 
-#def project_with_P(P, X):
+# def project_with_P(P, X):
 #    X = X.flatten()           # 🔑 CLAVE
 #    Xh = np.append(X, 1.0)    # (4,)
 #    x = P @ Xh
 #    return (x[:2] / x[2]).astype(np.float32)
 
+
 def project_with_P(P, X):
-    Xh = np.append(X, 1.0)   # X es (3,)
-    x = P @ Xh               # OK: (3x4)@(4,)
+    Xh = np.append(X, 1.0)  # X es (3,)
+    x = P @ Xh  # OK: (3x4)@(4,)
     return (x[:2] / x[2]).astype(np.float32)
 
 
-
-#def project_with_P(P, X):
+# def project_with_P(P, X):
 #    Xh = np.hstack([X, 1.0])      # (4,)
 #    x = P @ Xh                    # (3,)
 #    return (x[:2] / x[2]).astype(np.float32)
 
-def reproject_left(X):
-    rvec = np.zeros((3,1))
-    tvec = np.zeros((3,1))
 
-    pt, _ = cv2.projectPoints(
-        X.reshape(1,1,3),
-        rvec, tvec,
-        K1, D1
-    )
+def reproject_left(X):
+    rvec = np.zeros((3, 1))
+    tvec = np.zeros((3, 1))
+
+    pt, _ = cv2.projectPoints(X.reshape(1, 1, 3), rvec, tvec, K1, D1)
     return pt.reshape(2)
+
 
 def reproject_right(X):
     rvec, _ = cv2.Rodrigues(R)
-    tvec = T.reshape(3,1)
+    tvec = T.reshape(3, 1)
 
-    pt, _ = cv2.projectPoints(
-        X.reshape(1,1,3),
-        rvec, tvec,
-        K2, D2
-    )
+    pt, _ = cv2.projectPoints(X.reshape(1, 1, 3), rvec, tvec, K2, D2)
     return pt.reshape(2)
 
 
@@ -72,11 +66,7 @@ def reproject_points(points_3d, K, D, R, t):
     """
     rvec, _ = cv2.Rodrigues(R)
     imgpts, _ = cv2.projectPoints(
-        points_3d.astype(np.float64),
-        rvec,
-        t.reshape(3, 1),
-        K,
-        D
+        points_3d.astype(np.float64), rvec, t.reshape(3, 1), K, D
     )
     return imgpts.reshape(-1, 2)
 
@@ -86,8 +76,8 @@ def triangulate_point(pt_l, pt_r):
     pt_l, pt_r: (2,)
     devuelve: (3,)
     """
-    pl = pt_l.reshape(2,1)
-    pr = pt_r.reshape(2,1)
+    pl = pt_l.reshape(2, 1)
+    pr = pt_r.reshape(2, 1)
 
     X = cv2.triangulatePoints(P1, P2, pl, pr)
     X = (X[:3] / X[3]).flatten()
@@ -156,12 +146,9 @@ def estimate_pose_from_3d(pts_3d):
     s = MARKER_SIZE / 2.0
 
     # Sistema de coordenadas del marcador
-    obj_pts = np.array([
-        [-s, s, 0],
-        [s, s, 0],
-        [s, -s, 0],
-        [-s, -s, 0]
-    ], dtype=np.float64)
+    obj_pts = np.array(
+        [[-s, s, 0], [s, s, 0], [s, -s, 0], [-s, -s, 0]], dtype=np.float64
+    )
 
     # Centrar ambos conjuntos
     obj_centroid = obj_pts.mean(axis=0)
@@ -193,8 +180,8 @@ def draw_axes(frame, corners):
 def main(resolution, debug=True):
     print("K1\n", K1)
     print("P1\n", P1)
-    print("image size assumed by P1 =", P1[0,2]*2, P1[1,2]*2)
-    print("image size assumed by P2 =", P2[0,2]*2, P2[1,2]*2)
+    print("image size assumed by P1 =", P1[0, 2] * 2, P1[1, 2] * 2)
+    print("image size assumed by P2 =", P2[0, 2] * 2, P2[1, 2] * 2)
 
     root = tk.Tk()
     screen_w = root.winfo_screenwidth()
@@ -207,7 +194,7 @@ def main(resolution, debug=True):
         screen_w=screen_w,
         screen_h=screen_h,
         cam_left="/dev/video2",
-        cam_right="/dev/video0"
+        cam_right="/dev/video0",
     )
 
     half_w = screen_w // 2
@@ -239,11 +226,11 @@ def main(resolution, debug=True):
     cap_l.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap_r.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
     cap_l.set(cv2.CAP_PROP_FPS, 30)
     cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
+    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
     cap_r.set(cv2.CAP_PROP_FPS, 30)
     cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
@@ -259,18 +246,11 @@ def main(resolution, debug=True):
 
     print("▶ Presioná ESC para salir")
 
-
-
     h, w = resolution[1], resolution[0]
 
+    map1_l, map2_l = cv2.initUndistortRectifyMap(K1, D1, R1, P1, (w, h), cv2.CV_32FC1)
 
-    map1_l, map2_l = cv2.initUndistortRectifyMap(
-        K1, D1, R1, P1, (w, h), cv2.CV_32FC1
-    )
-
-    map1_r, map2_r = cv2.initUndistortRectifyMap(
-        K2, D2, R2, P2, (w, h), cv2.CV_32FC1
-    )
+    map1_r, map2_r = cv2.initUndistortRectifyMap(K2, D2, R2, P2, (w, h), cv2.CV_32FC1)
 
     while True:
         # Discard one frame (buffered)
@@ -292,45 +272,38 @@ def main(resolution, debug=True):
         frame_l = cv2.remap(frame_l, map1_l, map2_l, cv2.INTER_LINEAR)
         frame_r = cv2.remap(frame_r, map1_r, map2_r, cv2.INTER_LINEAR)
 
-
-
-
         pts_l, center_l, id_l = detect_marker_center_id(frame_l)
         pts_r, center_r, id_r = detect_marker_center_id(frame_r)
 
         ## Draw the center
         if center_l is not None and center_r is not None and id_l == id_r:
-          # 1) triangulación
-          ##Xc = triangulate_point(center_l, center_r)
+            # 1) triangulación
+            ##Xc = triangulate_point(center_l, center_r)
 
-          #X = cv2.triangulatePoints(P1, P2, center_l, center_r)
-          #pt_l = project_with_P(P1, X)
-          #pt_r = project_with_P(P2, X)
+            # X = cv2.triangulatePoints(P1, P2, center_l, center_r)
+            # pt_l = project_with_P(P1, X)
+            # pt_r = project_with_P(P2, X)
 
-          pl = center_l.reshape(2,1)
-          pr = center_r.reshape(2,1)
+            pl = center_l.reshape(2, 1)
+            pr = center_r.reshape(2, 1)
 
+            Xh = cv2.triangulatePoints(P1, P2, pl, pr)
+            Xc = (Xh[:3] / Xh[3]).flatten()  # ahora sí (3,)
+            pt_l = project_with_P(P1, Xc)
+            pt_r = project_with_P(P2, Xc)
 
-          Xh = cv2.triangulatePoints(P1, P2, pl, pr)
-          Xc = (Xh[:3] / Xh[3]).flatten()   # ahora sí (3,)
-          pt_l = project_with_P(P1, Xc)
-          pt_r = project_with_P(P2, Xc)
+            # 2) reproyección
+            # pt_l = reproject_left(Xc)
+            # pt_r = reproject_right(Xc)
+            ##pt_l = project_with_P(P1, Xc)
+            ##pt_r = project_with_P(P2, Xc)
 
-
-          # 2) reproyección
-          #pt_l = reproject_left(Xc)
-          #pt_r = reproject_right(Xc)
-          ##pt_l = project_with_P(P1, Xc)
-          ##pt_r = project_with_P(P2, Xc)
-
-
-
-          # 3) dibujo
-          cv2.circle(frame_l, tuple(pt_l.astype(int)), 5, (0,255,0), -1)
-          cv2.circle(frame_r, tuple(pt_r.astype(int)), 5, (0,255,0), -1)
+            # 3) dibujo
+            cv2.circle(frame_l, tuple(pt_l.astype(int)), 5, (0, 255, 0), -1)
+            cv2.circle(frame_r, tuple(pt_r.astype(int)), 5, (0, 255, 0), -1)
 
         # Draw the vertices
-        #if pts_l is not None and pts_r is not None and len(pts_l) == 4 and len(pts_r) == 4:
+        # if pts_l is not None and pts_r is not None and len(pts_l) == 4 and len(pts_r) == 4:
         #  for i in range(4):
         #    #Xi = triangulate_point(pts_l[i], pts_r[i])
         #    Xi = cv2.triangulatePoints(P1, P2, pts_l[i], pts_r[i])
@@ -340,9 +313,6 @@ def main(resolution, debug=True):
 
         #    cv2.circle(frame_l, tuple(pl.astype(int)), 4, (255,0,0), -1)
         #    cv2.circle(frame_r, tuple(pr.astype(int)), 4, (255,0,0), -1)
-
-
-
 
         ## Estimate tvec and rvec
         if pts_l is not None and pts_r is not None and id_l == id_r:
@@ -356,8 +326,12 @@ def main(resolution, debug=True):
 
         ## Draw axis
         if pts_l is not None and pts_r is not None and id_l == id_r:
-            draw_axes(frame_l, pts_l)  ## LO ESTA DIBUJANDO SIEMPRE HORIZONTAL Y VERTICAL
-            draw_axes(frame_r, pts_r)  ## LO ESTA DIBUJANDO SIEMPRE HORIZONTAL Y VERTICAL
+            draw_axes(
+                frame_l, pts_l
+            )  ## LO ESTA DIBUJANDO SIEMPRE HORIZONTAL Y VERTICAL
+            draw_axes(
+                frame_r, pts_r
+            )  ## LO ESTA DIBUJANDO SIEMPRE HORIZONTAL Y VERTICAL
 
         show_fitted(params.winname_L, frame_l)
         show_fitted(params.winname_R, frame_r)
