@@ -60,13 +60,15 @@ def main():
             X /= X[3]
             return X[:3]
 
-        #epipolar_error_threshold = 0.5
+        # epipolar_error_threshold = 0.5
         epipolar_error_threshold = 2.0
 
         l_x_rect, l_y_rect = rectify_point(l_x, l_y, K1, D1, R1, P1)
         r_x_rect, r_y_rect = rectify_point(r_x, r_y, K2, D2, R2, P2)
         if abs(l_y_rect - r_y_rect) > epipolar_error_threshold:
-            print(f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!")
+            print(
+                f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!"
+            )
 
         disparity = l_x_rect - r_x_rect
 
@@ -75,14 +77,16 @@ def main():
     # Explicit triangulation
     def estimate_3d_method_2(l_x, l_y, r_x, r_y):
 
-        #epipolar_error_threshold = 0.5
+        # epipolar_error_threshold = 0.5
         epipolar_error_threshold = 2.0
 
         l_x_rect, l_y_rect = rectify_point(l_x, l_y, K1, D1, R1, P1)
         r_x_rect, r_y_rect = rectify_point(r_x, r_y, K2, D2, R2, P2)
 
         if abs(l_y_rect - r_y_rect) > epipolar_error_threshold:
-            print(f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!")
+            print(
+                f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!"
+            )
 
         pts_l = np.array([[l_x_rect, l_y_rect]], dtype=np.float64).T
         pts_r = np.array([[r_x_rect, r_y_rect]], dtype=np.float64).T
