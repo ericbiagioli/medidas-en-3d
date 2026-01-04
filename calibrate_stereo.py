@@ -1,22 +1,20 @@
-import cv2
-import numpy as np
-import glob
-
-from calibrate_mono import calibrate_mono
-from helpers import *
+import argparse
 
 import configs as Cfg
+from calibrate_mono import calibrate_mono
+from helpers import *
 
 
 def validate_image_size(l_images, r_images):
     image_size = None
+    img_l = None
+    img_r = None
 
     for fname_l, fname_r in zip(l_images, r_images):
         img_l = cv2.imread(fname_l)
         img_r = cv2.imread(fname_r)
-
-    if img_l is None or img_r is None:
-        raise RuntimeError("Cannot read some of the images.")
+        if img_l is None or img_r is None:
+            raise RuntimeError("Cannot read some of the images.")
 
     if image_size is None:
         image_size = (img_l.shape[1], img_l.shape[0])

@@ -1,11 +1,9 @@
-from datetime import datetime
-import time
-import cv2
-import numpy as np
+import os
+import sys
 import tkinter as tk
 from types import SimpleNamespace
-import pickle
-import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from helpers import *
 
@@ -197,11 +195,10 @@ def process_video(params):
 
     palito_a = None
     palito_b = None
-    distance = distance(palito_a, palito_b)
+    dist = None  # distance(palito_a, palito_b)
     # palito_aruco es la punta del palito en coordenadas aruco
-    palito_aruco = {}
+    palito_aruco = {63: np.array([0.0, 0.0, 0.0])}
     # palito_aruco[63] = np.array([-0.041, -0.150, -0.0025])
-    palito_aruco[63] = np.array([0.0, 0.0, 0.0])
     palito_aruco[63] = palito_aruco[63].astype(np.float64)
 
     cap = cv2.VideoCapture("/dev/video1", cv2.CAP_V4L2)
@@ -282,12 +279,12 @@ def process_video(params):
                     cv2.circle(out, (px, py), 5, (0, 0, 255), -1)
 
         ## Escribir textos
-        distance = distance(palito_a, palito_b)
+        dist = distance(palito_a, palito_b)
 
         w = Writer(out)
         w.write(f"palito_a = {palito_a}")
         w.write(f"palito_b = {palito_b}")
-        w.write(f"dist: {distance}")
+        w.write(f"dist: {dist}")
 
         show_fitted(params.winname, out)
 

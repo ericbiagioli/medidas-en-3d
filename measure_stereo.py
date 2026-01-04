@@ -11,7 +11,9 @@ def rectify_point(x, y, K, D, R, P):
 
 def main():
     image_size = (640, 480)
-    calib = "testsets/640x480-baseline-small/calibration.npz"
+
+    testset_dir = "testsets/640x480_baseline_small_parallel__0"
+    calib = f"{testset_dir}/calibration.npz"
 
     data = np.load(calib)
 
@@ -32,56 +34,85 @@ def main():
     map1x, map1y = cv2.initUndistortRectifyMap(K1, D1, R1, P1, img_size, cv2.CV_32FC1)
     map2x, map2y = cv2.initUndistortRectifyMap(K2, D2, R2, P2, img_size, cv2.CV_32FC1)
 
-    points = {
-        "30": ((205, 185), (469, 156)),
-        "32": ((204, 248), (466, 220)),
-        "34": ((204, 309), (462, 283)),
-    }
+    points_coords = open(f"{testset_dir}/detected_coordinates.txt", "r")
+    code = points_coords.read()
+    points_coords.close()
+    ns = {}
+    exec(code, ns)
+    left_images = ns["left_images"]
+    right_images = ns["right_images"]
 
-    points_3d_1 = {}  ## Metodo 1
-    points_3d_2 = {}  ## Metodo 2
+    assert left_images is not None, "left_images is None"
+    assert right_images is not None, "right_images is None"
+    assert len(left_images) == len(
+        right_images
+    ), "left_images and right_images have different length"
+    for i in range(len(left_images)):
+        assert set(left_images[i].keys()) == set(
+            right_images[i].keys()
+        ), "some objects don't match the keys"
 
-    ## Metodo 1
-    def reproject_point(x, y, d, Q):
-        point = np.array([x, y, d, 1.0])
-        X = Q @ point
-        X /= X[3]
-        return X[:3]  # (X, Y, Z)
+    # Reprojection
+    def estimate_3d_method_1(l_x, l_y, r_x, r_y):
+        def reproject_point(x, y, d, Q):
+            point = np.array([x, y, d, 1.0])
+            X = Q @ point
+            X /= X[3]
+            return X[:3]
 
-    for label, ((x1, y1), (x2, y2)) in points.items():
-        x1r, y1r = rectify_point(x1, y1, K1, D1, R1, P1)
-        x2r, y2r = rectify_point(x2, y2, K2, D2, R2, P2)
+        #epipolar_error_threshold = 0.5
+        epipolar_error_threshold = 2.0
 
-        if abs(y1r - y2r) > 0.5:
-            print(f"Error epipolar en {label}: {y1r - y2r}")
+        l_x_rect, l_y_rect = rectify_point(l_x, l_y, K1, D1, R1, P1)
+        r_x_rect, r_y_rect = rectify_point(r_x, r_y, K2, D2, R2, P2)
+        if abs(l_y_rect - r_y_rect) > epipolar_error_threshold:
+            print(f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!")
 
-        ## Metodo 1: disparidad
-        d = x1r - x2r
-        P = reproject_point(x1r, y1r, d, Q)
-        points_3d_1[label] = P
-        print(f"Points3D (metodo1) {label} = {P}")
+        disparity = l_x_rect - r_x_rect
 
-        ## Metodo 2: triangulacion explicita
-        pts1 = np.array([[x1r, y1r]], dtype=np.float64).T
-        pts2 = np.array([[x2r, y2r]], dtype=np.float64).T
+        return reproject_point(l_x_rect, l_y_rect, disparity, Q)
 
-        X_h = cv2.triangulatePoints(P1, P2, pts1, pts2)
-        X = (X_h / X_h[3])[:3].reshape(-1)
-        points_3d_2[label] = X
+    # Explicit triangulation
+    def estimate_3d_method_2(l_x, l_y, r_x, r_y):
 
-    print("Metodo 1:")
-    for l1, l2 in combinations(points_3d_1.keys(), 2):
-        p1 = points_3d_1[l1]
-        p2 = points_3d_1[l2]
-        dist = np.linalg.norm(p1 - p2)
-        print(f"Distancia {l1} – {l2}: {dist:.4f}")
+        #epipolar_error_threshold = 0.5
+        epipolar_error_threshold = 2.0
 
-    print("Metodo 2:")
-    for l1, l2 in combinations(points_3d_2.keys(), 2):
-        p1 = points_3d_2[l1]
-        p2 = points_3d_2[l2]
-        dist = np.linalg.norm(p1 - p2)
-        print(f"Distancia {l1} – {l2}: {dist:.4f}")
+        l_x_rect, l_y_rect = rectify_point(l_x, l_y, K1, D1, R1, P1)
+        r_x_rect, r_y_rect = rectify_point(r_x, r_y, K2, D2, R2, P2)
+
+        if abs(l_y_rect - r_y_rect) > epipolar_error_threshold:
+            print(f"Epipolar error = {l_y_rect - r_y_rect}. Bad correspondence or bad calibration!")
+
+        pts_l = np.array([[l_x_rect, l_y_rect]], dtype=np.float64).T
+        pts_r = np.array([[r_x_rect, r_y_rect]], dtype=np.float64).T
+
+        X_h = cv2.triangulatePoints(P1, P2, pts_l, pts_r)
+        return (X_h / X_h[3])[:3].reshape(-1)
+
+    for pair_index in range(len(left_images)):
+        keys = list(left_images[pair_index].keys())
+        print("Performing measures in the image: ", pair_index)
+        for i1 in range(len(keys) - 1):
+            l_x1, l_y1 = left_images[pair_index][keys[i1]]
+            r_x1, r_y1 = right_images[pair_index][keys[i1]]
+            p1_method1 = estimate_3d_method_1(l_x1, l_y1, r_x1, r_y1)
+            p1_method2 = estimate_3d_method_2(l_x1, l_y1, r_x1, r_y1)
+
+            for i2 in range(i1 + 1, len(keys)):
+                l_x2, l_y2 = left_images[pair_index][keys[i2]]
+                r_x2, r_y2 = right_images[pair_index][keys[i2]]
+                p2_method1 = estimate_3d_method_1(l_x2, l_y2, r_x2, r_y2)
+                p2_method2 = estimate_3d_method_2(l_x2, l_y2, r_x2, r_y2)
+
+                expected = abs(keys[i1] - keys[i2]) / 100.0
+                detected_method1 = np.linalg.norm(p1_method1 - p2_method1)
+                detected_method2 = np.linalg.norm(p1_method2 - p2_method2)
+
+                print(f"{keys[i1]} -- {keys[i2]}. ", end="")
+                print(f"Expected = {expected}. ", end="")
+                print(f"Method 1: {detected_method1}. ", end="")
+                print(f"Method 2: {detected_method2}")
 
 
 if __name__ == "__main__":

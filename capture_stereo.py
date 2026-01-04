@@ -1,12 +1,8 @@
-import cv2
-import numpy as np
+import argparse
 import time
-import inspect
-import sys
-
-from helpers import *
 
 import configs as Cfg
+from helpers import *
 
 
 def _capture_frames_stereo_with_charuco_board(
@@ -30,11 +26,11 @@ def _capture_frames_stereo_with_charuco_board(
     # Mitigate the delay between captures.
     cap_l.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap_r.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))  # type: ignore
     cap_l.set(cv2.CAP_PROP_FPS, 30)
     cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))  # type: ignore
     cap_r.set(cv2.CAP_PROP_FPS, 30)
     cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
@@ -146,11 +142,11 @@ def _capture_frames_stereo_without_markers(
     # Mitigate the delay between captures.
     cap_l.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap_r.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+    cap_l.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))  # type: ignore
     cap_l.set(cv2.CAP_PROP_FPS, 30)
     cap_l.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_l.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
-    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+    cap_r.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))  # type: ignore
     cap_r.set(cv2.CAP_PROP_FPS, 30)
     cap_r.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
     cap_r.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
@@ -277,13 +273,13 @@ def main(testset_dir, force_overwrite=False):
     choice = int(input("\nChoose a function: "))
 
     if choice == 1:
-        capture_images_for_testset(lowres, s, par)
+        capture_images_for_testset(testset_dir, lowres, s, par)
     elif choice == 2:
-        capture_images_for_testset(lowres, m, par)
+        capture_images_for_testset(testset_dir, lowres, m, par)
     elif choice == 3:
-        capture_images_for_testset(lowres, s, deg30)
+        capture_images_for_testset(testset_dir, lowres, s, deg30)
     elif choice == 4:
-        capture_images_for_testset(lowres, m, deg30)
+        capture_images_for_testset(testset_dir, lowres, m, deg30)
 
 
 # def capture_stereo_images_just_testing():

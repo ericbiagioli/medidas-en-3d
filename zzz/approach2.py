@@ -1,10 +1,3 @@
-import cv2
-import numpy as np
-import tkinter as tk
-from types import SimpleNamespace
-import os
-import glob
-
 from helpers import *
 
 # =========================
@@ -99,29 +92,6 @@ def project_with_P(P, X):
 # =========================
 # Main
 # =========================
-
-
-def rigid_alignment(A, B):
-    """
-    A, B: (N,3)
-    Encuentra R, t tal que R @ A + t ≈ B
-    """
-    A_mean = A.mean(axis=0)
-    B_mean = B.mean(axis=0)
-
-    A_c = A - A_mean
-    B_c = B - B_mean
-
-    H = A_c.T @ B_c
-    U, _, Vt = np.linalg.svd(H)
-
-    R = Vt.T @ U.T
-    if np.linalg.det(R) < 0:
-        Vt[2, :] *= -1
-        R = Vt.T @ U.T
-
-    t = B_mean - R @ A_mean
-    return R, t
 
 
 def mkdir(path):
@@ -318,5 +288,4 @@ def testset1():
 
 
 if __name__ == "__main__":
-    # testset1()
-    main()
+    testset1()

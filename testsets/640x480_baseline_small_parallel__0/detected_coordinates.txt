@@ -1,0 +1,16 @@
+# It is assumed that this file defines two
+# variables, each one of them is a list of
+# objects.
+
+left_images = [{
+    30.0: (205, 185),
+    32.0: (204, 248),
+    34.0: (204, 309)
+}]
+
+
+right_images = [{
+    30.0: (469, 156),
+    32.0: (466, 220),
+    34.0: (462, 283)
+}]
