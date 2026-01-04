@@ -1,3 +1,0 @@
-Generador de patterns:
-
-https://calib.io/pages/camera-calibration-pattern-generator
